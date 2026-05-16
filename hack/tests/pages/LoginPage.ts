@@ -126,6 +126,18 @@ export class LoginPage {
     );
   }
 
+  get externalAuthProviderList() {
+    return this.page.getByTestId("external-auth-provider-list");
+  }
+
+  get externalAuthProviderEmpty() {
+    return this.page.getByTestId("external-auth-provider-empty");
+  }
+
+  externalAuthProviderButton(providerKey: string) {
+    return this.page.getByTestId(`external-auth-provider-${providerKey}`);
+  }
+
   getText(text: string) {
     return this.page.getByText(text, { exact: true }).first();
   }
@@ -216,5 +228,9 @@ export class LoginPage {
     await this.page.waitForURL((url) => !url.pathname.includes("/auth/login"), {
       timeout: 15000,
     });
+  }
+
+  async clickExternalAuthProvider(providerKey: string) {
+    await this.externalAuthProviderButton(providerKey).click();
   }
 }

@@ -65,6 +65,15 @@
       "clearAllConfirm": "Clear all notifications?"
     }
   },
+  "auth": {
+    "externalProviders": {
+      "authorizeFailed": "Failed to start external sign-in",
+      "callbackFailed": "External sign-in failed",
+      "callbackProcessing": "Completing external sign-in...",
+      "signInWith": "Sign in with {provider}",
+      "title": "External sign-in"
+    }
+  },
   "dashboard": {
     "analytics": {
       "overview": {
@@ -1085,7 +1094,8 @@
   "profile": {
     "tabs": {
       "basic": "Basic Info",
-      "password": "Password"
+      "password": "Password",
+      "security": "Security"
     },
     "actions": {
       "updateProfile": "Update Profile"
@@ -1136,7 +1146,22 @@
       "securityEmail": "Security Email",
       "securityEmailDesc": "Bind a recovery email to receive verification codes and security alerts.",
       "securityMfa": "Multi-factor Authentication",
-      "securityMfaDesc": "Add a second verification factor for sensitive operations and sign-ins."
+      "securityMfaDesc": "Add a second verification factor for sensitive operations and sign-ins.",
+      "externalAuth": {
+        "bind": "Bind",
+        "bindFailed": "Failed to start binding",
+        "bindSuccess": "External identity bound successfully",
+        "bound": "Bound",
+        "boundDesc": "External identity is bound",
+        "description": "Bind external identities only after signing in with this local account.",
+        "empty": "No external authentication providers are available.",
+        "title": "External Authentication",
+        "unbind": "Unbind",
+        "unbindConfirm": "Unbind this external identity?",
+        "unbindSuccess": "External identity unbound",
+        "unbound": "Unbound",
+        "unboundDesc": "No external identity is bound for this provider."
+      }
     },
     "notification": {
       "accountPassword": "Account Security",

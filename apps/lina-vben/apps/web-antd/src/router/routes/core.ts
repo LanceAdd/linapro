@@ -57,6 +57,15 @@ const coreRoutes: RouteRecordRaw[] = [
         },
       },
       {
+        name: 'AuthProviderCallback',
+        path: 'providers/callback',
+        component: () =>
+          import('#/views/_core/authentication/provider-callback.vue'),
+        meta: {
+          title: $t('page.auth.login'),
+        },
+      },
+      {
         name: 'CodeLogin',
         path: 'code-login',
         redirect: LOGIN_PATH,

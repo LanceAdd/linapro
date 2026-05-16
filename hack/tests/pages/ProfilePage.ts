@@ -10,13 +10,23 @@ export class ProfilePage {
   }
 
   get nicknameInput(): Locator {
-    return this.page
-      .getByPlaceholder(/请输入昵称|Please enter a nickname/i)
-      .first();
+    return this.page.getByTestId('profile-base-form').locator('input').first();
   }
 
   get passwordTab(): Locator {
-    return this.page.getByRole('tab', { name: /密码|Password/i }).first();
+    return this.page.getByRole('tab').nth(1);
+  }
+
+  get securityTab(): Locator {
+    return this.page.getByRole('tab').nth(2);
+  }
+
+  get authIdentityList(): Locator {
+    return this.page.getByTestId('profile-auth-identities');
+  }
+
+  get authIdentityEmpty(): Locator {
+    return this.page.getByTestId('profile-auth-identities-empty');
   }
 
   panelDisplayName(name: string): Locator {
@@ -32,5 +42,23 @@ export class ProfilePage {
   async openPasswordTab() {
     await this.passwordTab.click();
     await waitForRouteReady(this.page);
+  }
+
+  async openSecurityTab() {
+    await this.securityTab.click();
+    await waitForRouteReady(this.page);
+    await this.authIdentityList.waitFor({ state: 'visible', timeout: 10000 });
+  }
+
+  authProvider(providerKey: string): Locator {
+    return this.page.getByTestId(`profile-auth-provider-${providerKey}`);
+  }
+
+  authProviderBind(providerKey: string): Locator {
+    return this.page.getByTestId(`profile-auth-bind-${providerKey}`);
+  }
+
+  authProviderUnbind(providerKey: string): Locator {
+    return this.page.getByTestId(`profile-auth-unbind-${providerKey}`);
   }
 }

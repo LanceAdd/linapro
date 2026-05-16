@@ -1,5 +1,6 @@
 import type { Recordable } from '@vben/types';
 
+import type { AuthApi } from '#/api/core/auth';
 import type { AppUserInfo } from '#/api/core/user';
 import type { LoginTenant } from '#/api/tenant/model';
 
@@ -147,6 +148,69 @@ export const useAuthStore = defineStore('auth', () => {
     };
   }
 
+  async function completeExternalLogin(
+    loginResult: AuthApi.LoginResult,
+    onSuccess?: () => Promise<void> | void,
+  ) {
+    let userInfo: AppUserInfo | null = null;
+    try {
+      loginLoading.value = true;
+      const { accessToken, preToken, refreshToken } = loginResult;
+      const tenants = Array.isArray(loginResult.tenants)
+        ? loginResult.tenants
+        : [];
+
+      if (preToken && tenants.length > 1 && !accessToken) {
+        pendingPreToken.value = preToken;
+        tenantStore.setTenantContext({
+          currentTenant: null,
+          enabled: true,
+          tenants,
+        });
+        return { requiresTenantSelection: true, tenants, userInfo };
+      }
+
+      if (accessToken) {
+        accessStore.setAccessToken(accessToken);
+        accessStore.setRefreshToken(refreshToken ?? null);
+        userInfo = await fetchUserInfo();
+        userStore.setUserInfo(userInfo);
+        tenantStore.setTenantContext({
+          currentTenant: tenants.length === 1 ? tenants[0] : null,
+          enabled: resolveTenantEnabled(tenants, userInfo, tenants[0] ?? null),
+          tenants,
+        });
+
+        if (accessStore.loginExpired) {
+          accessStore.setLoginExpired(false);
+        } else {
+          onSuccess
+            ? await onSuccess?.()
+            : await router.push(
+                tenantStore.resolveFallbackPath(
+                  userInfo.homePath || preferences.app.defaultHomePath,
+                ),
+              );
+        }
+
+        if (userInfo?.realName) {
+          notification.success({
+            description: `${$t('authentication.loginSuccessDesc')}: ${userInfo.realName}`,
+            duration: 3,
+            message: $t('authentication.loginSuccess'),
+          });
+        }
+      }
+    } finally {
+      loginLoading.value = false;
+    }
+
+    return {
+      requiresTenantSelection: false,
+      userInfo,
+    };
+  }
+
   async function selectTenant(tenantId: number) {
     if (!pendingPreToken.value) {
       return;
@@ -235,6 +299,7 @@ export const useAuthStore = defineStore('auth', () => {
     $reset,
     authLogin,
     clearSession,
+    completeExternalLogin,
     fetchUserInfo,
     loginLoading,
     logout,

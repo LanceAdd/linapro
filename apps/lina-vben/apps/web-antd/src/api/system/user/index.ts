@@ -1,5 +1,27 @@
 import { requestClient } from '#/api/request';
 
+export interface AuthIdentity {
+  avatar?: string;
+  boundAt?: string;
+  displayName?: string;
+  email?: string;
+  externalTenantId?: string;
+  lastLoginAt?: string;
+  mobile?: string;
+  providerKey: string;
+  providerType: string;
+  subject: string;
+}
+
+export interface AuthIdentityListResult {
+  list: AuthIdentity[];
+}
+
+export interface AuthIdentityBindResult {
+  redirectUrl: string;
+  state: string;
+}
+
 export interface SysUser {
   id: number;
   username: string;
@@ -144,6 +166,27 @@ export function userStatusChange(id: number, status: number) {
 /** 获取当前用户信息 */
 export function getProfile() {
   return requestClient.get<SysUser>('/user/profile');
+}
+
+/** List external authentication identities bound to the current user. */
+export async function getAuthIdentities() {
+  const res = await requestClient.get<AuthIdentityListResult>(
+    '/user/auth-identities',
+  );
+  return Array.isArray(res.list) ? res.list : [];
+}
+
+/** Start binding an external authentication provider to the current user. */
+export function bindAuthIdentity(providerKey: string, redirectUri?: string) {
+  return requestClient.post<AuthIdentityBindResult>(
+    `/user/auth-identities/${providerKey}/bind`,
+    { redirectUri },
+  );
+}
+
+/** Unbind an external authentication provider from the current user. */
+export function unbindAuthIdentity(providerKey: string) {
+  return requestClient.delete(`/user/auth-identities/${providerKey}`);
 }
 
 /** 更新当前用户信息 */

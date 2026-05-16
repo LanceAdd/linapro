@@ -65,6 +65,15 @@
       "clearAllConfirm": "确认清空所有消息通知？"
     }
   },
+  "auth": {
+    "externalProviders": {
+      "authorizeFailed": "发起外部登录失败",
+      "callbackFailed": "外部登录失败",
+      "callbackProcessing": "正在完成外部登录...",
+      "signInWith": "使用 {provider} 登录",
+      "title": "外部登录"
+    }
+  },
   "dashboard": {
     "analytics": {
       "overview": {
@@ -1085,7 +1094,8 @@
   "profile": {
     "tabs": {
       "basic": "基本资料",
-      "password": "修改密码"
+      "password": "修改密码",
+      "security": "安全设置"
     },
     "actions": {
       "updateProfile": "更新资料"
@@ -1136,7 +1146,22 @@
       "securityEmail": "安全邮箱",
       "securityEmailDesc": "绑定恢复邮箱，用于接收验证码和安全提醒。",
       "securityMfa": "多因素认证",
-      "securityMfaDesc": "为登录和敏感操作增加第二重验证。"
+      "securityMfaDesc": "为登录和敏感操作增加第二重验证。",
+      "externalAuth": {
+        "bind": "绑定",
+        "bindFailed": "发起绑定失败",
+        "bindSuccess": "外部身份绑定成功",
+        "bound": "已绑定",
+        "boundDesc": "已绑定外部身份",
+        "description": "请先使用当前本地账号登录，再绑定外部身份。",
+        "empty": "暂无可用的外部登录提供方。",
+        "title": "外部身份认证",
+        "unbind": "解绑",
+        "unbindConfirm": "确认解绑该外部身份？",
+        "unbindSuccess": "外部身份已解绑",
+        "unbound": "未绑定",
+        "unboundDesc": "该提供方尚未绑定外部身份。"
+      }
     },
     "notification": {
       "accountPassword": "账号安全",

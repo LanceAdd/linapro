@@ -15,6 +15,7 @@ import { useAuthStore } from '#/store';
 import BaseSetting from './base-setting.vue';
 import PasswordSetting from './password-setting.vue';
 import ProfilePanel from './profile-panel.vue';
+import SecuritySetting from './security-setting.vue';
 
 const profile = ref<SysUser>();
 const authStore = useAuthStore();
@@ -57,6 +58,9 @@ async function handleProfileUpdated() {
           </TabPane>
           <TabPane key="password" :tab="$t('pages.profile.tabs.password')">
             <PasswordSetting @updated="handleProfileUpdated" />
+          </TabPane>
+          <TabPane key="security" :tab="$t('pages.profile.tabs.security')">
+            <SecuritySetting />
           </TabPane>
         </Tabs>
       </div>
