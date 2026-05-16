@@ -59,4 +59,10 @@ var (
 		"Failed to update last login time",
 		gcode.CodeInternalError,
 	)
+	// CodeAuthExternalIdentityNotBound reports an external identity login without a local binding.
+	CodeAuthExternalIdentityNotBound = bizerr.MustDefine(
+		"AUTH_EXTERNAL_IDENTITY_NOT_BOUND",
+		"External identity is not bound to a local user",
+		gcode.CodeNotAuthorized,
+	)
 )

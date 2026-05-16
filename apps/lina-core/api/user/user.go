@@ -11,6 +11,9 @@ import (
 )
 
 type IUserV1 interface {
+	AuthIdentityList(ctx context.Context, req *v1.AuthIdentityListReq) (res *v1.AuthIdentityListRes, err error)
+	AuthIdentityUnbind(ctx context.Context, req *v1.AuthIdentityUnbindReq) (res *v1.AuthIdentityUnbindRes, err error)
+	AuthIdentityBind(ctx context.Context, req *v1.AuthIdentityBindReq) (res *v1.AuthIdentityBindRes, err error)
 	UpdateAvatar(ctx context.Context, req *v1.UpdateAvatarReq) (res *v1.UpdateAvatarRes, err error)
 	BatchDelete(ctx context.Context, req *v1.BatchDeleteReq) (res *v1.BatchDeleteRes, err error)
 	BatchUpdate(ctx context.Context, req *v1.BatchUpdateReq) (res *v1.BatchUpdateRes, err error)

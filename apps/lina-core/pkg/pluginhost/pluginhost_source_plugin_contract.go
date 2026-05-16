@@ -22,6 +22,8 @@ type SourcePlugin interface {
 	Cron() SourcePluginCron
 	// Governance returns the menu and permission governance registration facade.
 	Governance() SourcePluginGovernance
+	// Auth returns the authentication provider registration facade.
+	Auth() SourcePluginAuth
 }
 
 // SourcePluginAssets exposes plugin-owned asset declarations grouped under one
@@ -68,6 +70,14 @@ type SourcePluginGovernance interface {
 	RegisterPermissionFilter(point ExtensionPoint, mode CallbackExecutionMode, handler PermissionFilterHandler)
 }
 
+// SourcePluginAuth exposes authentication-provider registrations grouped under
+// one dedicated facade.
+type SourcePluginAuth interface {
+	// RegisterProvider registers one callback that contributes external
+	// authentication providers.
+	RegisterProvider(point ExtensionPoint, mode CallbackExecutionMode, handler AuthProviderRegisterHandler)
+}
+
 // SourcePluginDefinition exposes the host-side read model restored from one
 // grouped source-plugin registration.
 type SourcePluginDefinition interface {
@@ -84,6 +94,8 @@ type SourcePluginDefinition interface {
 	GetMenuFilters() []*MenuFilterHandlerRegistration
 	// GetPermissionFilters returns the registered permission filter callbacks.
 	GetPermissionFilters() []*PermissionFilterHandlerRegistration
+	// GetAuthProviderRegistrars returns the registered auth-provider callbacks.
+	GetAuthProviderRegistrars() []*AuthProviderHandlerRegistration
 	// GetUninstallHandler returns the registered source-plugin uninstall cleanup callback.
 	GetUninstallHandler() SourcePluginUninstallHandler
 }
@@ -121,6 +133,12 @@ type sourcePluginCron struct {
 // sourcePluginGovernance is the governance-registration facade bound to one
 // source plugin definition.
 type sourcePluginGovernance struct {
+	plugin *sourcePlugin
+}
+
+// sourcePluginAuth is the authentication-registration facade bound to one
+// source plugin definition.
+type sourcePluginAuth struct {
 	plugin *sourcePlugin
 }
 
@@ -178,6 +196,14 @@ func (p *sourcePlugin) Governance() SourcePluginGovernance {
 		return nil
 	}
 	return p.governance
+}
+
+// Auth returns the authentication provider registration facade.
+func (p *sourcePlugin) Auth() SourcePluginAuth {
+	if p == nil {
+		return nil
+	}
+	return p.auth
 }
 
 // UseEmbeddedFiles binds one plugin-owned embedded filesystem.
@@ -254,4 +280,17 @@ func (r *sourcePluginGovernance) RegisterPermissionFilter(
 		panic("pluginhost: source plugin governance facade is nil")
 	}
 	r.plugin.registerPermissionFilter(point, mode, handler)
+}
+
+// RegisterProvider registers one callback that contributes external
+// authentication providers.
+func (r *sourcePluginAuth) RegisterProvider(
+	point ExtensionPoint,
+	mode CallbackExecutionMode,
+	handler AuthProviderRegisterHandler,
+) {
+	if r == nil || r.plugin == nil {
+		panic("pluginhost: source plugin auth facade is nil")
+	}
+	r.plugin.registerAuthProvider(point, mode, handler)
 }

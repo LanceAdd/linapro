@@ -83,6 +83,9 @@ type (
 	// ManagedCronJob describes one plugin-owned scheduled-job definition that
 	// the host can project into the unified scheduled-job management table.
 	ManagedCronJob = integration.ManagedCronJob
+
+	// AuthProviderRegistration describes one plugin-owned auth provider handler.
+	AuthProviderRegistration = integration.AuthProviderRegistration
 )
 
 // PluginItem is the display-ready projection of one plugin entry.
@@ -145,6 +148,10 @@ type AuthLoginSucceededInput struct {
 	Message string
 	// Reason is the stable auth lifecycle reason code delivered to plugins.
 	Reason string
+	// Method identifies the authentication method, for example password or oidc.
+	Method string
+	// Provider identifies the external authentication provider when available.
+	Provider string
 }
 
 // AuthHookService defines auth-related plugin hook operations.
@@ -199,6 +206,8 @@ type SourceIntegrationService interface {
 	ListManagedCronJobs(ctx context.Context) ([]ManagedCronJob, error)
 	// ListManagedCronJobsByPlugin returns cron definitions owned by one plugin.
 	ListManagedCronJobsByPlugin(ctx context.Context, pluginID string) ([]ManagedCronJob, error)
+	// ListAuthProviders returns source-plugin authentication provider registrations.
+	ListAuthProviders(ctx context.Context) ([]AuthProviderRegistration, error)
 	// DispatchHookEvent dispatches one named hook event to all enabled plugins.
 	DispatchHookEvent(
 		ctx context.Context,

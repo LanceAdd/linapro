@@ -33,7 +33,7 @@ import (
 // protected, and dynamic plugin dispatch routes.
 func bindHostAPIRoutes(_ context.Context, server *ghttp.Server, runtime *httpRuntime) {
 	var (
-		authCtrl       = auth.NewV1(runtime.authSvc, runtime.bizCtxSvc)
+		authCtrl       = auth.NewV1(runtime.authSvc, runtime.authProviderSvc, runtime.bizCtxSvc)
 		configCtrl     = configctrl.NewV1(runtime.sysConfigSvc)
 		dictCtrl       = dict.NewV1(runtime.dictSvc)
 		fileCtrl       = filectrl.NewV1(runtime.fileSvc)
@@ -43,7 +43,7 @@ func bindHostAPIRoutes(_ context.Context, server *ghttp.Server, runtime *httpRun
 		publicCfgCtrl  = publicconfigctrl.NewV1(runtime.configSvc, runtime.i18nSvc)
 		menuCtrl       = menu.NewV1(runtime.menuSvc, runtime.roleSvc, runtime.bizCtxSvc)
 		roleCtrl       = role.NewV1(runtime.roleSvc)
-		userCtrl       = user.NewV1(runtime.userSvc, runtime.roleSvc, runtime.menuSvc, runtime.orgCapSvc, runtime.i18nSvc)
+		userCtrl       = user.NewV1(runtime.userSvc, runtime.roleSvc, runtime.menuSvc, runtime.orgCapSvc, runtime.i18nSvc, runtime.authProviderSvc, runtime.bizCtxSvc)
 		userMsgCtrl    = usermsg.NewV1(runtime.userMsgSvc)
 		jobCtrl        = jobctrl.NewV1(runtime.jobMgmtSvc)
 		jobGroupCtrl   = jobgroupctrl.NewV1(runtime.jobMgmtSvc)
@@ -67,6 +67,10 @@ func bindHostAPIRoutes(_ context.Context, server *ghttp.Server, runtime *httpRun
 			healthCtrl.Get,
 			authCtrl.Login,
 			authCtrl.Refresh,
+			authCtrl.ProviderList,
+			authCtrl.ProviderAuthorize,
+			authCtrl.ProviderCallback,
+			authCtrl.ProviderCallbackPost,
 			i18nCtrl.RuntimeLocales,
 			i18nCtrl.RuntimeMessages,
 			pluginCtrl.DynamicList,

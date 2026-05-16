@@ -31,6 +31,7 @@ type staticConfigCaches struct {
 	logger           staticConfigBox[LoggerConfig]
 	metadata         staticConfigBox[MetadataConfig]
 	monitor          staticConfigBox[MonitorConfig]
+	authProviders    staticConfigBox[AuthProvidersConfig]
 	health           staticConfigBox[HealthConfig]
 	shutdown         staticConfigBox[ShutdownConfig]
 	scheduler        staticConfigBox[SchedulerConfig]
@@ -95,6 +96,27 @@ func cloneJwtConfig(cfg *JwtConfig) *JwtConfig {
 		return nil
 	}
 	cloned := *cfg
+	return &cloned
+}
+
+// cloneAuthProvidersConfig returns a detached copy of auth provider settings.
+func cloneAuthProvidersConfig(cfg *AuthProvidersConfig) *AuthProvidersConfig {
+	if cfg == nil {
+		return nil
+	}
+	cloned := *cfg
+	if len(cfg.OIDC) > 0 {
+		cloned.OIDC = make([]OIDCProviderConfig, len(cfg.OIDC))
+		copy(cloned.OIDC, cfg.OIDC)
+		for index := range cfg.OIDC {
+			if len(cfg.OIDC[index].Scopes) > 0 {
+				cloned.OIDC[index].Scopes = append([]string(nil), cfg.OIDC[index].Scopes...)
+			}
+		}
+	}
+	if len(cfg.WeCom) > 0 {
+		cloned.WeCom = append([]WeComProviderConfig(nil), cfg.WeCom...)
+	}
 	return &cloned
 }
 

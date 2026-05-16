@@ -6,6 +6,8 @@ package pluginhost
 import (
 	"context"
 	"io/fs"
+
+	"github.com/gogf/gf/v2/errors/gerror"
 )
 
 // sourcePlugin stores one compile-time source plugin definition behind the
@@ -25,6 +27,8 @@ type sourcePlugin struct {
 	cron SourcePluginCron
 	// governance exposes grouped menu and permission governance helpers.
 	governance SourcePluginGovernance
+	// auth exposes grouped authentication provider helpers.
+	auth SourcePluginAuth
 
 	embeddedFiles     fs.FS
 	uninstallHandler  SourcePluginUninstallHandler
@@ -33,6 +37,7 @@ type sourcePlugin struct {
 	cronRegistrars    []*CronHandlerRegistration
 	menuFilters       []*MenuFilterHandlerRegistration
 	permissionFilters []*PermissionFilterHandlerRegistration
+	authProviders     []*AuthProviderHandlerRegistration
 }
 
 // HookPayload exposes one published host hook payload.
@@ -101,6 +106,16 @@ type MenuFilterHandlerRegistration struct {
 type PermissionFilterHandlerRegistration struct {
 	// Handler is the callback invoked by the host.
 	Handler PermissionFilterHandler
+	// Mode is the declared callback execution mode.
+	Mode CallbackExecutionMode
+	// Point is the published backend extension point.
+	Point ExtensionPoint
+}
+
+// AuthProviderHandlerRegistration defines one auth-provider registration callback.
+type AuthProviderHandlerRegistration struct {
+	// Handler is the callback invoked by the host startup registrar.
+	Handler AuthProviderRegisterHandler
 	// Mode is the declared callback execution mode.
 	Mode CallbackExecutionMode
 	// Point is the published backend extension point.
@@ -194,6 +209,116 @@ type permissionDescriptor struct {
 // PermissionFilterHandler defines one callback that decides whether a permission should stay effective.
 type PermissionFilterHandler func(ctx context.Context, permission PermissionDescriptor) (bool, error)
 
+// ExternalIdentity describes one provider-authenticated external identity.
+type ExternalIdentity struct {
+	// ProviderKey is the stable provider instance key.
+	ProviderKey string
+	// ProviderType identifies the provider protocol family.
+	ProviderType string
+	// Subject is the stable provider subject identifier.
+	Subject string
+	// UnionID is the provider union identifier when available.
+	UnionID string
+	// OpenID is the provider open identifier when available.
+	OpenID string
+	// ExternalTenantID is the provider tenant/corp identifier when available.
+	ExternalTenantID string
+	// ExternalDeptIDs are provider department identifiers.
+	ExternalDeptIDs []string
+	// Email is the external email address.
+	Email string
+	// EmailVerified reports whether Email was verified by the provider.
+	EmailVerified bool
+	// Mobile is the external mobile phone number.
+	Mobile string
+	// DisplayName is the external display name.
+	DisplayName string
+	// Avatar is the external avatar URL.
+	Avatar string
+	// RawProfile stores non-secret provider profile fields.
+	RawProfile map[string]any
+}
+
+// AuthProviderAuthorizeInput describes one authorization URL request.
+type AuthProviderAuthorizeInput struct {
+	// ProviderKey is the provider instance requested by the caller.
+	ProviderKey string
+	// State is the host-generated CSRF state value.
+	State string
+	// Nonce is the host-generated OIDC nonce value.
+	Nonce string
+	// PKCEChallenge is the host-generated PKCE code challenge.
+	PKCEChallenge string
+	// PKCEChallengeMethod is the RFC 7636 method used for PKCEChallenge.
+	PKCEChallengeMethod string
+	// RedirectURL is the configured host callback URL.
+	RedirectURL string
+	// Scopes are the requested OAuth scopes.
+	Scopes []string
+	// Purpose identifies login or bind flow.
+	Purpose string
+}
+
+// AuthProviderAuthorizeOutput returns the external authorization target.
+type AuthProviderAuthorizeOutput struct {
+	// RedirectURL is the external URL the browser should navigate to.
+	RedirectURL string
+}
+
+// AuthProviderCallbackInput describes one provider callback request.
+type AuthProviderCallbackInput struct {
+	// ProviderKey is the provider instance requested by the caller.
+	ProviderKey string
+	// Query contains callback query parameters.
+	Query map[string]string
+	// Form contains callback form parameters for POST callbacks.
+	Form map[string]string
+	// RedirectURL is the configured host callback URL.
+	RedirectURL string
+	// Nonce is the host-stored nonce expected for the callback.
+	Nonce string
+	// PKCEVerifier is the host-stored PKCE verifier expected for token exchange.
+	PKCEVerifier string
+	// Purpose identifies login or bind flow.
+	Purpose string
+}
+
+// AuthProvider describes one plugin-owned external authentication provider.
+type AuthProvider interface {
+	// ProviderKey returns the stable provider instance key.
+	ProviderKey() string
+	// ProviderType returns the provider protocol family.
+	ProviderType() string
+	// DisplayName returns the default display name.
+	DisplayName() string
+	// Icon returns the provider icon name or URL.
+	Icon() string
+	// BuildAuthorizeURL builds an external authorization URL.
+	BuildAuthorizeURL(ctx context.Context, input AuthProviderAuthorizeInput) (*AuthProviderAuthorizeOutput, error)
+	// ExchangeCallback converts a provider callback to a normalized external identity.
+	ExchangeCallback(ctx context.Context, input AuthProviderCallbackInput) (*ExternalIdentity, error)
+}
+
+// AuthProviderRegistrar exposes auth-provider registration helpers to plugins.
+type AuthProviderRegistrar interface {
+	// Add registers one plugin-owned authentication provider.
+	Add(provider AuthProvider)
+	// HostServices returns host-published services available to the plugin.
+	HostServices() HostServices
+}
+
+// AuthProviderRegisterHandler defines one callback that registers external auth providers.
+type AuthProviderRegisterHandler func(ctx context.Context, registrar AuthProviderRegistrar) error
+
+// UnimplementedAuthProvider returns a technical error for provider adapters
+// whose protocol implementation is intentionally not available yet.
+func UnimplementedAuthProvider(_ context.Context, providerKey string, message string) error {
+	if message == "" {
+		message = "Authentication provider is not implemented"
+	}
+	return gerror.Newf("%s: %s", providerKey, message)
+}
+
 // NewSourcePlugin creates and returns a new grouped source plugin definition.
 func NewSourcePlugin(id string) SourcePlugin {
 	plugin := &sourcePlugin{
@@ -203,6 +328,7 @@ func NewSourcePlugin(id string) SourcePlugin {
 		cronRegistrars:    make([]*CronHandlerRegistration, 0),
 		menuFilters:       make([]*MenuFilterHandlerRegistration, 0),
 		permissionFilters: make([]*PermissionFilterHandlerRegistration, 0),
+		authProviders:     make([]*AuthProviderHandlerRegistration, 0),
 	}
 	plugin.assets = &sourcePluginAssets{plugin: plugin}
 	plugin.lifecycle = &sourcePluginLifecycle{plugin: plugin}
@@ -210,6 +336,7 @@ func NewSourcePlugin(id string) SourcePlugin {
 	plugin.http = &sourcePluginHTTP{plugin: plugin}
 	plugin.cron = &sourcePluginCron{plugin: plugin}
 	plugin.governance = &sourcePluginGovernance{plugin: plugin}
+	plugin.auth = &sourcePluginAuth{plugin: plugin}
 	return plugin
 }
 
@@ -407,6 +534,26 @@ func (p *sourcePlugin) registerPermissionFilter(
 	})
 }
 
+// RegisterAuthProvider registers one callback that contributes authentication providers.
+func (p *sourcePlugin) registerAuthProvider(
+	point ExtensionPoint,
+	mode CallbackExecutionMode,
+	handler AuthProviderRegisterHandler,
+) {
+	if p == nil {
+		panic("pluginhost: source plugin is nil")
+	}
+	if handler == nil {
+		panic("pluginhost: auth provider registrar is nil")
+	}
+	mode = normalizeRegistrationPointMode(point, ExtensionPointAuthProviderRegister, mode)
+	p.authProviders = append(p.authProviders, &AuthProviderHandlerRegistration{
+		Handler: handler,
+		Mode:    mode,
+		Point:   point,
+	})
+}
+
 // GetHookHandlers returns the registered callback-style hook handlers.
 func (p *sourcePlugin) GetHookHandlers() []*HookHandlerRegistration {
 	if p == nil {
@@ -454,6 +601,16 @@ func (p *sourcePlugin) GetPermissionFilters() []*PermissionFilterHandlerRegistra
 	}
 	items := make([]*PermissionFilterHandlerRegistration, len(p.permissionFilters))
 	copy(items, p.permissionFilters)
+	return items
+}
+
+// GetAuthProviderRegistrars returns the registered auth-provider callbacks.
+func (p *sourcePlugin) GetAuthProviderRegistrars() []*AuthProviderHandlerRegistration {
+	if p == nil {
+		return []*AuthProviderHandlerRegistration{}
+	}
+	items := make([]*AuthProviderHandlerRegistration, len(p.authProviders))
+	copy(items, p.authProviders)
 	return items
 }
 

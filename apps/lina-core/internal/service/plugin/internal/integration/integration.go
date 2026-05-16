@@ -58,6 +58,14 @@ type ManagedCronJob struct {
 	Handler pluginhost.CronJobHandler
 }
 
+// AuthProviderRegistration describes one plugin-owned auth provider handler.
+type AuthProviderRegistration struct {
+	// PluginID identifies the owning source plugin.
+	PluginID string
+	// Provider is the plugin-owned external auth provider implementation.
+	Provider pluginhost.AuthProvider
+}
+
 // DynamicCronExecutor executes one dynamic-plugin declared cron job through the
 // active runtime bridge.
 type DynamicCronExecutor interface {
@@ -141,6 +149,8 @@ type SourceRegistrationService interface {
 	ListManagedCronJobs(ctx context.Context) ([]ManagedCronJob, error)
 	// ListManagedCronJobsByPlugin returns cron definitions owned by one plugin.
 	ListManagedCronJobsByPlugin(ctx context.Context, pluginID string) ([]ManagedCronJob, error)
+	// ListAuthProviders returns source-plugin authentication provider registrations.
+	ListAuthProviders(ctx context.Context) ([]AuthProviderRegistration, error)
 }
 
 // HookDispatchService defines plugin hook dispatch operations.

@@ -90,6 +90,8 @@ func (s *serviceImpl) dispatchAuthHookEvent(
 			OS:         input.Os,
 			Message:    input.Message,
 			Reason:     input.Reason,
+			Method:     input.Method,
+			Provider:   input.Provider,
 		}),
 	)
 }

@@ -12,6 +12,7 @@ import (
 
 	"lina-core/internal/service/apidoc"
 	"lina-core/internal/service/auth"
+	"lina-core/internal/service/authprovider"
 	"lina-core/internal/service/bizctx"
 	"lina-core/internal/service/cachecoord"
 	"lina-core/internal/service/cluster"
@@ -54,6 +55,7 @@ type httpRuntime struct {
 	clusterSvc      cluster.Service      // clusterSvc owns primary-election lifecycle for clustered deployments.
 	pluginSvc       pluginsvc.Service    // pluginSvc owns plugin lifecycle, runtime assets, routes, and hooks.
 	authSvc         auth.Service         // authSvc owns JWT, session, and token-state flows.
+	authProviderSvc authprovider.Service // authProviderSvc owns external auth provider metadata and bindings.
 	authTokenIssuer auth.TenantTokenIssuer
 	bizCtxSvc       bizctx.Service          // bizCtxSvc owns request-scoped business context mutation.
 	i18nSvc         i18nsvc.Service         // i18nSvc owns runtime language bundles and localization.
@@ -171,32 +173,33 @@ func newHTTPRuntime(ctx context.Context, configSvc config.Service) (*httpRuntime
 	}
 
 	var (
-		bizCtxSvc     = bizctx.New()
-		sessionStore  = session.NewDBStore()
-		cacheCoordSvc = cachecoord.Default(clusterSvc)
-		i18nSvc       = i18nsvc.New(bizCtxSvc, configSvc, cacheCoordSvc)
-		pluginSvc     = pluginsvc.New(clusterSvc, configSvc, bizCtxSvc, cacheCoordSvc, i18nSvc, sessionStore)
-		orgCapSvc     = orgcap.New(pluginSvc)
-		tenantSvc     = tenantcapsvc.New(pluginSvc, bizCtxSvc)
-		kvCacheSvc    = kvcache.New()
-		roleSvc       = role.New(pluginSvc, bizCtxSvc, configSvc, i18nSvc, nil, orgCapSvc, tenantSvc)
-		scopeSvc      = datascope.New(bizCtxSvc, roleSvc, orgCapSvc)
-		dictSvc       = dict.New(i18nSvc)
-		menuSvc       = menu.New(pluginSvc, i18nSvc, roleSvc)
-		notifySvc     = notify.New(tenantSvc)
-		authSvc       = auth.New(configSvc, pluginSvc, orgCapSvc, roleSvc, tenantSvc, sessionStore, kvCacheSvc)
-		fileSvc       = file.New(configSvc, file.NewLocalStorage(configSvc.GetUploadPath(ctx)), bizCtxSvc, dictSvc, scopeSvc)
-		sysConfigSvc  = sysconfig.New(configSvc, i18nSvc)
-		sysInfoSvc    = sysinfosvc.New(configSvc, clusterSvc, coordinationSvc, cacheCoordSvc)
-		userSvc       = user.New(authSvc, bizCtxSvc, i18nSvc, orgCapSvc, roleSvc, scopeSvc, tenantSvc)
-		userMsgSvc    = usermsg.New(bizCtxSvc, notifySvc, i18nSvc)
-		apiDocSvc     = apidoc.New(configSvc, bizCtxSvc, i18nSvc, pluginSvc)
-		authTokenSvc  = authSvc.(auth.TenantTokenIssuer)
-		jobRegistry   = jobhandlersvc.New()
-		jobScheduler  = jobmgmtsvc.NewScheduler(clusterSvc, jobRegistry, configSvc)
-		jobMgmtSvc    = jobmgmtsvc.New(bizCtxSvc, configSvc, i18nSvc, jobRegistry, jobScheduler, scopeSvc)
-		middlewareSvc = middleware.New(authSvc, bizCtxSvc, configSvc, i18nSvc, pluginSvc, roleSvc, tenantSvc)
-		hostServices  = pluginhostservices.New(
+		bizCtxSvc       = bizctx.New()
+		sessionStore    = session.NewDBStore()
+		cacheCoordSvc   = cachecoord.Default(clusterSvc)
+		i18nSvc         = i18nsvc.New(bizCtxSvc, configSvc, cacheCoordSvc)
+		pluginSvc       = pluginsvc.New(clusterSvc, configSvc, bizCtxSvc, cacheCoordSvc, i18nSvc, sessionStore)
+		orgCapSvc       = orgcap.New(pluginSvc)
+		tenantSvc       = tenantcapsvc.New(pluginSvc, bizCtxSvc)
+		kvCacheSvc      = kvcache.New()
+		roleSvc         = role.New(pluginSvc, bizCtxSvc, configSvc, i18nSvc, nil, orgCapSvc, tenantSvc)
+		scopeSvc        = datascope.New(bizCtxSvc, roleSvc, orgCapSvc)
+		dictSvc         = dict.New(i18nSvc)
+		menuSvc         = menu.New(pluginSvc, i18nSvc, roleSvc)
+		notifySvc       = notify.New(tenantSvc)
+		authSvc         = auth.New(configSvc, pluginSvc, orgCapSvc, roleSvc, tenantSvc, sessionStore, kvCacheSvc)
+		authProviderSvc = authprovider.New(configSvc, pluginSvc, kvCacheSvc)
+		fileSvc         = file.New(configSvc, file.NewLocalStorage(configSvc.GetUploadPath(ctx)), bizCtxSvc, dictSvc, scopeSvc)
+		sysConfigSvc    = sysconfig.New(configSvc, i18nSvc)
+		sysInfoSvc      = sysinfosvc.New(configSvc, clusterSvc, coordinationSvc, cacheCoordSvc)
+		userSvc         = user.New(authSvc, bizCtxSvc, i18nSvc, orgCapSvc, roleSvc, scopeSvc, tenantSvc)
+		userMsgSvc      = usermsg.New(bizCtxSvc, notifySvc, i18nSvc)
+		apiDocSvc       = apidoc.New(configSvc, bizCtxSvc, i18nSvc, pluginSvc)
+		authTokenSvc    = authSvc.(auth.TenantTokenIssuer)
+		jobRegistry     = jobhandlersvc.New()
+		jobScheduler    = jobmgmtsvc.NewScheduler(clusterSvc, jobRegistry, configSvc)
+		jobMgmtSvc      = jobmgmtsvc.New(bizCtxSvc, configSvc, i18nSvc, jobRegistry, jobScheduler, scopeSvc)
+		middlewareSvc   = middleware.New(authSvc, bizCtxSvc, configSvc, i18nSvc, pluginSvc, roleSvc, tenantSvc)
+		hostServices    = pluginhostservices.New(
 			apiDocSvc,
 			authSvc,
 			authTokenSvc,
@@ -239,6 +242,7 @@ func newHTTPRuntime(ctx context.Context, configSvc config.Service) (*httpRuntime
 		clusterSvc:      clusterSvc,
 		pluginSvc:       pluginSvc,
 		authSvc:         authSvc,
+		authProviderSvc: authProviderSvc,
 		authTokenIssuer: authTokenSvc,
 		bizCtxSvc:       bizCtxSvc,
 		i18nSvc:         i18nSvc,

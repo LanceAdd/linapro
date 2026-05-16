@@ -30,6 +30,10 @@ const (
 	HookPayloadKeyMessage HookPayloadKey = "message"
 	// HookPayloadKeyReason stores the stable reason code for auth hook events.
 	HookPayloadKeyReason HookPayloadKey = "reason"
+	// HookPayloadKeyAuthMethod stores the authentication method for auth hook events.
+	HookPayloadKeyAuthMethod HookPayloadKey = "authMethod"
+	// HookPayloadKeyAuthProvider stores the external provider key for auth hook events.
+	HookPayloadKeyAuthProvider HookPayloadKey = "authProvider"
 )
 
 // Stable reason codes published with host authentication lifecycle events.
@@ -66,6 +70,10 @@ type AuthHookPayloadInput struct {
 	Message string
 	// Reason is the stable auth lifecycle reason code delivered to plugins.
 	Reason string
+	// Method identifies the authentication method.
+	Method string
+	// Provider identifies the external authentication provider.
+	Provider string
 }
 
 // PluginLifecycleHookPayloadInput defines the published plugin lifecycle hook fields.
@@ -96,6 +104,8 @@ func BuildAuthHookPayloadValues(input AuthHookPayloadInput) map[string]interface
 		HookPayloadKeyOS.String():         input.OS,
 		HookPayloadKeyMessage.String():    input.Message,
 		HookPayloadKeyReason.String():     input.Reason,
+		HookPayloadKeyAuthMethod.String(): input.Method,
+		HookPayloadKeyAuthProvider.String(): input.Provider,
 	}
 }
 

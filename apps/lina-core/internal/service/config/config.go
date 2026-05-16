@@ -48,6 +48,8 @@ type AuthConfigReader interface {
 	GetSession(ctx context.Context) (*SessionConfig, error)
 	// GetSessionTimeout returns the runtime-effective online-session timeout.
 	GetSessionTimeout(ctx context.Context) (time.Duration, error)
+	// GetAuthProviders reads static pluggable authentication provider settings.
+	GetAuthProviders(ctx context.Context) *AuthProvidersConfig
 }
 
 // LoginConfigReader reads login policy settings.

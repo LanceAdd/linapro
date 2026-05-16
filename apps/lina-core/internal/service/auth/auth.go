@@ -62,6 +62,8 @@ type Service interface {
 	SessionStore() session.Store
 	// Login verifies credentials and issues JWT token.
 	Login(ctx context.Context, in LoginInput) (*LoginOutput, error)
+	// LoginWithExternalIdentity converts a bound external identity to a host login.
+	LoginWithExternalIdentity(ctx context.Context, in ExternalLoginInput) (*LoginOutput, error)
 	// Refresh validates a refresh token and issues a fresh access token.
 	Refresh(ctx context.Context, in RefreshInput) (*RefreshOutput, error)
 	// ParseToken parses and validates JWT token, returns claims.
@@ -161,6 +163,13 @@ type LoginOutput struct {
 	RefreshToken string       // JWT refresh token
 	PreToken     string       // Short-lived pre-login token for tenant selection
 	Tenants      []TenantInfo // Tenant candidates for two-stage login
+}
+
+// ExternalLoginInput defines input for a host-owned external identity login.
+type ExternalLoginInput struct {
+	ProviderKey  string                       // ProviderKey is the external provider instance key.
+	ProviderType string                       // ProviderType identifies the external provider family.
+	Identity     *pluginhost.ExternalIdentity // Identity is the provider-authenticated external identity.
 }
 
 // RefreshInput defines input for Refresh function.
@@ -291,39 +300,87 @@ func (s *serviceImpl) Login(ctx context.Context, in LoginInput) (*LoginOutput, e
 	}
 
 	// Generate JWT token pair
-	accessToken, refreshToken, tokenId, err := s.generateTokenPair(ctx, user, tenantID)
+	return s.completeLogin(ctx, user, tenantID, loginAuditContext{
+		Username: in.Username,
+		IP:       ip,
+		Browser:  browser,
+		OS:       osName,
+	})
+}
+
+// LoginWithExternalIdentity converts a bound external identity to a host login.
+func (s *serviceImpl) LoginWithExternalIdentity(ctx context.Context, in ExternalLoginInput) (*LoginOutput, error) {
+	if in.Identity == nil || in.Identity.Subject == "" || in.ProviderKey == "" {
+		return nil, bizerr.NewCode(CodeAuthExternalIdentityNotBound)
+	}
+	var identity *entity.SysAuthIdentity
+	err := dao.SysAuthIdentity.Ctx(ctx).
+		Where(do.SysAuthIdentity{
+			ProviderKey: in.ProviderKey,
+			Subject:     in.Identity.Subject,
+		}).
+		Scan(&identity)
 	if err != nil {
 		return nil, err
 	}
-
-	// Record login time
-	if _, err = dao.SysUser.Ctx(ctx).
-		Where(do.SysUser{Id: user.Id}).
-		Data(do.SysUser{LoginDate: gtime.Now()}).
-		Update(); err != nil {
-		return nil, bizerr.WrapCode(err, CodeAuthLoginStateUpdateFailed)
+	if identity == nil {
+		s.dispatchLoginFailed(ctx, in.ProviderKey, pluginsvc.AuthEventMessageInvalidCredentials, pluginhost.AuthHookReasonInvalidCredentials)
+		return nil, bizerr.NewCode(CodeAuthExternalIdentityNotBound)
 	}
-
-	// Create online session
-	if err = s.createSession(ctx, user, tenantID, tokenId); err != nil {
-		logger.Warningf(ctx, "create online session failed tokenId=%s err=%v", tokenId, err)
+	var user *entity.SysUser
+	err = dao.SysUser.Ctx(ctx).
+		Where(do.SysUser{Id: identity.UserId}).
+		Scan(&user)
+	if err != nil {
+		return nil, err
 	}
-
-	if s.pluginSvc != nil {
-		if err := s.pluginSvc.HandleAuthLoginSucceeded(ctx, pluginsvc.AuthLoginSucceededInput{
-			UserName:   in.Username,
-			Status:     authLoginStatusSuccess,
-			Ip:         ip,
-			ClientType: "web",
-			Browser:    browser,
-			Os:         osName,
-			Message:    pluginsvc.AuthEventMessageLoginSuccessful,
-			Reason:     pluginhost.AuthHookReasonLoginSuccessful,
-		}); err != nil {
-			logger.Warningf(ctx, "plugin login succeeded hook failed: %v", err)
+	if user == nil {
+		s.dispatchLoginFailed(ctx, in.ProviderKey, pluginsvc.AuthEventMessageInvalidCredentials, pluginhost.AuthHookReasonInvalidCredentials)
+		return nil, bizerr.NewCode(CodeAuthExternalIdentityNotBound)
+	}
+	if user.Status == statusDisabled {
+		s.dispatchLoginFailed(ctx, user.Username, pluginsvc.AuthEventMessageUserDisabled, pluginhost.AuthHookReasonUserDisabled)
+		return nil, bizerr.NewCode(CodeAuthUserDisabled)
+	}
+	tenants, err := s.loginTenants(ctx, user.Id)
+	if err != nil {
+		return nil, err
+	}
+	if s.tenantSvc != nil && s.tenantSvc.Enabled(ctx) && user.TenantId != int(pkgtenantcap.PLATFORM) && len(tenants) == 0 {
+		s.dispatchLoginFailed(ctx, user.Username, "Tenant is not available", "tenant_unavailable")
+		return nil, bizerr.NewCode(CodeAuthTenantUnavailable)
+	}
+	if len(tenants) > 1 {
+		preToken, err := s.preTokens.Create(ctx, preTokenRecord{
+			UserID:   user.Id,
+			Username: user.Username,
+			Status:   user.Status,
+		})
+		if err != nil {
+			return nil, bizerr.WrapCode(err, CodeAuthTokenStateUnavailable)
 		}
+		return &LoginOutput{PreToken: preToken, Tenants: tenants}, nil
 	}
-	return &LoginOutput{AccessToken: accessToken, RefreshToken: refreshToken}, nil
+	tenantID := int(pkgtenantcap.PLATFORM)
+	if len(tenants) == 1 {
+		tenantID = tenants[0].Id
+	}
+	output, err := s.completeLogin(ctx, user, tenantID, loginAuditContext{
+		Username: user.Username,
+		Provider: in.ProviderKey,
+		Method:   in.ProviderType,
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, err = dao.SysAuthIdentity.Ctx(ctx).
+		Where(do.SysAuthIdentity{Id: identity.Id}).
+		Data(do.SysAuthIdentity{LastLoginAt: gtime.Now()}).
+		Update()
+	if err != nil {
+		return nil, err
+	}
+	return output, nil
 }
 
 // IssueTenantToken consumes a pre-login token and issues a tenant-bound JWT.

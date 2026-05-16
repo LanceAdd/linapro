@@ -325,6 +325,13 @@ var productionPanicPolicy = panicAuditPolicy{
 		},
 		{
 			Path:     "apps/lina-core/pkg/pluginhost/pluginhost_source_plugin.go",
+			Function: "(*sourcePlugin).registerAuthProvider",
+			Count:    2,
+			Category: panicCategoryPluginRegistration,
+			Reason:   "source plugin auth provider facade rejects invalid compile-time registrations",
+		},
+		{
+			Path:     "apps/lina-core/pkg/pluginhost/pluginhost_source_plugin.go",
 			Function: "(*sourcePlugin).registerRoutes",
 			Count:    2,
 			Category: panicCategoryPluginRegistration,
@@ -371,6 +378,13 @@ var productionPanicPolicy = panicAuditPolicy{
 			Count:    1,
 			Category: panicCategoryPluginRegistration,
 			Reason:   "nil source plugin governance facade indicates broken compile-time wiring",
+		},
+		{
+			Path:     "apps/lina-core/pkg/pluginhost/pluginhost_source_plugin_contract.go",
+			Function: "(*sourcePluginAuth).RegisterProvider",
+			Count:    1,
+			Category: panicCategoryPluginRegistration,
+			Reason:   "nil source plugin auth provider facade indicates broken compile-time wiring",
 		},
 		{
 			Path:     "apps/lina-core/pkg/pluginhost/pluginhost_source_plugin_contract.go",

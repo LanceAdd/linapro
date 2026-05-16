@@ -7,19 +7,22 @@ package auth
 import (
 	authapi "lina-core/api/auth"
 	authsvc "lina-core/internal/service/auth"
+	authprovidersvc "lina-core/internal/service/authprovider"
 	"lina-core/internal/service/bizctx"
 )
 
 // ControllerV1 is the authentication controller.
 type ControllerV1 struct {
-	authSvc   authsvc.Service // auth service
-	bizCtxSvc bizctx.Service  // business context service
+	authSvc         authsvc.Service         // auth service
+	authProviderSvc authprovidersvc.Service // auth provider service
+	bizCtxSvc       bizctx.Service          // business context service
 }
 
 // NewV1 creates and returns a new authentication controller instance.
-func NewV1(authSvc authsvc.Service, bizCtxSvc bizctx.Service) authapi.IAuthV1 {
+func NewV1(authSvc authsvc.Service, authProviderSvc authprovidersvc.Service, bizCtxSvc bizctx.Service) authapi.IAuthV1 {
 	return &ControllerV1{
-		authSvc:   authSvc,
-		bizCtxSvc: bizCtxSvc,
+		authSvc:         authSvc,
+		authProviderSvc: authProviderSvc,
+		bizCtxSvc:       bizCtxSvc,
 	}
 }

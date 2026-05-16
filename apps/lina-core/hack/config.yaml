@@ -11,6 +11,27 @@ database:
     link: *localDatabaseLink
     debug: true
 
+# Development examples for pluggable authentication providers. Secrets are
+# referenced by environment variable names and are not stored in database seed
+# data or provider metadata.
+authProviders:
+  stateTTL: 10m
+  oidc:
+    # - providerKey: "google"
+    #   displayName: "Google"
+    #   issuer: "https://accounts.google.com"
+    #   clientId: ""
+    #   clientSecretEnv: "LINAPRO_AUTH_GOOGLE_CLIENT_SECRET"
+    #   redirectUrl: "http://localhost:8080/api/v1/auth/providers/google/callback"
+    #   scopes: ["openid", "profile", "email"]
+  wecom:
+    # - providerKey: "wecom-acme"
+    #   displayName: "Enterprise WeChat"
+    #   corpId: ""
+    #   agentId: ""
+    #   corpSecretEnv: "LINAPRO_AUTH_WECOM_CORP_SECRET"
+    #   redirectUrl: "http://localhost:8080/api/v1/auth/providers/wecom-acme/callback"
+
 # CLI tool, only in development environment.
 # https://goframe.org/docs/cli
 gfcli:

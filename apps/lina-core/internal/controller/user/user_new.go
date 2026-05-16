@@ -6,6 +6,8 @@ package user
 
 import (
 	userapi "lina-core/api/user"
+	authprovidersvc "lina-core/internal/service/authprovider"
+	"lina-core/internal/service/bizctx"
 	"lina-core/internal/service/i18n"
 	"lina-core/internal/service/menu"
 	"lina-core/internal/service/orgcap"
@@ -15,20 +17,24 @@ import (
 
 // ControllerV1 is the user controller.
 type ControllerV1 struct {
-	userSvc   usersvc.Service // user service
-	roleSvc   role.Service    // role service
-	menuSvc   menu.Service    // menu service
-	orgCapSvc orgcap.Service  // optional organization capability service
-	i18nSvc   i18n.Translator // runtime translation service
+	userSvc         usersvc.Service         // user service
+	roleSvc         role.Service            // role service
+	menuSvc         menu.Service            // menu service
+	orgCapSvc       orgcap.Service          // optional organization capability service
+	i18nSvc         i18n.Translator         // runtime translation service
+	authProviderSvc authprovidersvc.Service // auth provider service
+	bizCtxSvc       bizctx.Service          // business context service
 }
 
 // NewV1 creates and returns a new user controller instance.
-func NewV1(userSvc usersvc.Service, roleSvc role.Service, menuSvc menu.Service, orgCapSvc orgcap.Service, i18nSvc i18n.Translator) userapi.IUserV1 {
+func NewV1(userSvc usersvc.Service, roleSvc role.Service, menuSvc menu.Service, orgCapSvc orgcap.Service, i18nSvc i18n.Translator, authProviderSvc authprovidersvc.Service, bizCtxSvc bizctx.Service) userapi.IUserV1 {
 	return &ControllerV1{
-		userSvc:   userSvc,
-		roleSvc:   roleSvc,
-		menuSvc:   menuSvc,
-		orgCapSvc: orgCapSvc,
-		i18nSvc:   i18nSvc,
+		userSvc:         userSvc,
+		roleSvc:         roleSvc,
+		menuSvc:         menuSvc,
+		orgCapSvc:       orgCapSvc,
+		i18nSvc:         i18nSvc,
+		authProviderSvc: authProviderSvc,
+		bizCtxSvc:       bizCtxSvc,
 	}
 }

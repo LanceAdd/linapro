@@ -93,6 +93,53 @@ func (s *serviceImpl) RegisterCrons(ctx context.Context) error {
 	return nil
 }
 
+// ListAuthProviders returns source-plugin authentication provider registrations.
+func (s *serviceImpl) ListAuthProviders(ctx context.Context) ([]AuthProviderRegistration, error) {
+	manifests, err := s.catalogSvc.ScanManifests()
+	if err != nil {
+		return nil, err
+	}
+	if err = s.RefreshEnabledSnapshot(ctx); err != nil {
+		return nil, err
+	}
+
+	items := make([]AuthProviderRegistration, 0)
+	for _, manifest := range manifests {
+		if manifest == nil || !s.IsEnabled(ctx, manifest.ID) {
+			continue
+		}
+		sourcePlugin, ok := pluginhost.GetSourcePlugin(manifest.ID)
+		if !ok {
+			continue
+		}
+		registrar := pluginhost.NewAuthProviderRegistrar(manifest.ID, s.hostServices)
+		for _, handler := range sourcePlugin.GetAuthProviderRegistrars() {
+			if handler == nil || handler.Handler == nil {
+				continue
+			}
+			if err = handler.Handler(ctx, registrar); err != nil {
+				return nil, err
+			}
+		}
+		typed, ok := registrar.(interface {
+			Providers() []pluginhost.AuthProvider
+		})
+		if !ok {
+			continue
+		}
+		for _, provider := range typed.Providers() {
+			if provider == nil {
+				continue
+			}
+			items = append(items, AuthProviderRegistration{
+				PluginID: manifest.ID,
+				Provider: provider,
+			})
+		}
+	}
+	return items, nil
+}
+
 // DispatchPluginHookEvent dispatches one named hook event to all enabled plugins.
 // It implements catalog.HookDispatcher and runtime.HookDispatcher.
 func (s *serviceImpl) DispatchPluginHookEvent(

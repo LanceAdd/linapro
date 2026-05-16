@@ -50,6 +50,14 @@ func (s *serviceImpl) ListManagedCronJobsByPlugin(ctx context.Context, pluginID 
 	return s.integrationSvc.ListManagedCronJobsByPlugin(ctx, pluginID)
 }
 
+// ListAuthProviders returns source-plugin authentication provider registrations.
+func (s *serviceImpl) ListAuthProviders(ctx context.Context) ([]AuthProviderRegistration, error) {
+	if err := s.ensureRuntimeCacheFresh(ctx); err != nil {
+		return nil, err
+	}
+	return s.integrationSvc.ListAuthProviders(ctx)
+}
+
 // DispatchHookEvent dispatches one named hook event to all enabled plugins.
 func (s *serviceImpl) DispatchHookEvent(
 	ctx context.Context,

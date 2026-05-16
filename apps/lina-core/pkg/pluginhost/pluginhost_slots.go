@@ -62,6 +62,8 @@ const (
 	ExtensionPointMenuFilter ExtensionPoint = "menu.filter"
 	// ExtensionPointPermissionFilter filters host permissions.
 	ExtensionPointPermissionFilter ExtensionPoint = "permission.filter"
+	// ExtensionPointAuthProviderRegister registers plugin-owned authentication providers.
+	ExtensionPointAuthProviderRegister ExtensionPoint = "auth.provider.register"
 )
 
 // HookAction defines one supported plugin hook action.
@@ -80,18 +82,19 @@ const (
 // publishedExtensionPoints defines the extension points exposed by the host and
 // their default execution characteristics.
 var publishedExtensionPoints = map[ExtensionPoint]ExtensionPointDefinition{
-	ExtensionPointAuthLoginSucceeded:  {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
-	ExtensionPointAuthLoginFailed:     {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
-	ExtensionPointAuthLogoutSucceeded: {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
-	ExtensionPointPluginInstalled:     {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
-	ExtensionPointPluginEnabled:       {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
-	ExtensionPointPluginDisabled:      {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
-	ExtensionPointPluginUninstalled:   {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
-	ExtensionPointSystemStarted:       {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
-	ExtensionPointHTTPRouteRegister:   {Kind: ExtensionKindRegistrar, DefaultMode: CallbackExecutionModeBlocking},
-	ExtensionPointCronRegister:        {Kind: ExtensionKindRegistrar, DefaultMode: CallbackExecutionModeBlocking},
-	ExtensionPointMenuFilter:          {Kind: ExtensionKindRegistrar, DefaultMode: CallbackExecutionModeBlocking},
-	ExtensionPointPermissionFilter:    {Kind: ExtensionKindRegistrar, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointAuthLoginSucceeded:   {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointAuthLoginFailed:      {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointAuthLogoutSucceeded:  {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointPluginInstalled:      {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointPluginEnabled:        {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointPluginDisabled:       {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointPluginUninstalled:    {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointSystemStarted:        {Kind: ExtensionKindHook, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointHTTPRouteRegister:    {Kind: ExtensionKindRegistrar, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointCronRegister:         {Kind: ExtensionKindRegistrar, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointMenuFilter:           {Kind: ExtensionKindRegistrar, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointPermissionFilter:     {Kind: ExtensionKindRegistrar, DefaultMode: CallbackExecutionModeBlocking},
+	ExtensionPointAuthProviderRegister: {Kind: ExtensionKindRegistrar, DefaultMode: CallbackExecutionModeBlocking},
 }
 
 // supportedExtensionPointModes constrains which execution modes are accepted
@@ -139,6 +142,9 @@ var supportedExtensionPointModes = map[ExtensionPoint]map[CallbackExecutionMode]
 		CallbackExecutionModeBlocking: {},
 	},
 	ExtensionPointPermissionFilter: {
+		CallbackExecutionModeBlocking: {},
+	},
+	ExtensionPointAuthProviderRegister: {
 		CallbackExecutionModeBlocking: {},
 	},
 }

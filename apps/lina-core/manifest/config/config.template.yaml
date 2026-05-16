@@ -68,6 +68,37 @@ jwt:
   # Token 有效期（duration 字符串）
   expire: 24h
 
+# Pluggable authentication provider configuration
+# 可插拔认证提供方配置
+authProviders:
+  # OAuth/OIDC authorization temporary state lifetime.
+  # OAuth/OIDC 授权临时状态有效期。
+  stateTTL: 10m
+  # OIDC provider instances. Client secrets must be configured through
+  # environment variables referenced by clientSecretEnv.
+  # OIDC 提供方实例。客户端密钥必须通过 clientSecretEnv 引用的环境变量配置。
+  oidc:
+    # - providerKey: "google"
+    #   displayName: "Google"
+    #   issuer: "https://accounts.google.com"
+    #   clientId: ""
+    #   clientSecretEnv: "LINAPRO_AUTH_GOOGLE_CLIENT_SECRET"
+    #   redirectUrl: "http://localhost:8080/api/v1/auth/providers/google/callback"
+    #   scopes:
+    #     - "openid"
+    #     - "profile"
+    #     - "email"
+  # Enterprise WeChat provider instances. Secrets must be configured through
+  # environment variables referenced by corpSecretEnv.
+  # 企业微信提供方实例。密钥必须通过 corpSecretEnv 引用的环境变量配置。
+  wecom:
+    # - providerKey: "wecom-acme"
+    #   displayName: "Enterprise WeChat"
+    #   corpId: ""
+    #   agentId: ""
+    #   corpSecretEnv: "LINAPRO_AUTH_WECOM_CORP_SECRET"
+    #   redirectUrl: "http://localhost:8080/api/v1/auth/providers/wecom-acme/callback"
+
 # Online session configuration
 # 在线会话配置
 session:
