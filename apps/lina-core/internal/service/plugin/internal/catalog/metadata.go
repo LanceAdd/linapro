@@ -49,6 +49,10 @@ type ResourceOperation string
 // ResourceAccessMode defines which execution contexts may invoke one resource.
 type ResourceAccessMode string
 
+// DependencyInstallMode defines whether a missing dependency may be installed
+// automatically by the host lifecycle orchestrator.
+type DependencyInstallMode string
+
 // Plugin governance enums and constants persisted across registry, release,
 // migration, and resource-reference tables.
 const (
@@ -163,6 +167,10 @@ const (
 	ResourceAccessModeRequest ResourceAccessMode = "request"
 	ResourceAccessModeSystem  ResourceAccessMode = "system"
 	ResourceAccessModeBoth    ResourceAccessMode = "both"
+
+	// DependencyInstallMode values.
+	DependencyInstallModeManual DependencyInstallMode = "manual"
+	DependencyInstallModeAuto   DependencyInstallMode = "auto"
 )
 
 // String returns the canonical migration direction value.
@@ -207,16 +215,23 @@ func (value ResourceOperation) String() string { return string(value) }
 // String returns the canonical resource access-mode value.
 func (value ResourceAccessMode) String() string { return string(value) }
 
+// String returns the canonical dependency install-mode value.
+func (value DependencyInstallMode) String() string { return string(value) }
+
 // ManifestSnapshot stores the review-friendly manifest snapshot persisted in sys_plugin_release.
 type ManifestSnapshot struct {
 	ID                        string                          `yaml:"id"`
 	Name                      string                          `yaml:"name"`
 	Version                   string                          `yaml:"version"`
 	Type                      string                          `yaml:"type"`
+	ScopeNature               string                          `yaml:"scopeNature,omitempty"`
+	SupportsMultiTenant       bool                            `yaml:"supportsMultiTenant,omitempty"`
+	DefaultInstallMode        string                          `yaml:"defaultInstallMode,omitempty"`
 	Description               string                          `yaml:"description,omitempty"`
 	Author                    string                          `yaml:"author,omitempty"`
 	Homepage                  string                          `yaml:"homepage,omitempty"`
 	License                   string                          `yaml:"license,omitempty"`
+	Dependencies              *DependencySpec                 `yaml:"dependencies,omitempty"`
 	RuntimeKind               string                          `yaml:"runtimeKind,omitempty"`
 	RuntimeABIVersion         string                          `yaml:"runtimeAbiVersion,omitempty"`
 	ManifestDeclared          bool                            `yaml:"manifestDeclared"`

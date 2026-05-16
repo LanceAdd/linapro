@@ -13,6 +13,7 @@ import (
 type SysUser struct {
 	g.Meta    `orm:"table:sys_user, do:true"`
 	Id        any         // User ID
+	TenantId  any         // Primary/default tenant ID, 0 means PLATFORM
 	Username  any         // Username
 	Password  any         // Password
 	Nickname  any         // User nickname

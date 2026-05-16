@@ -9,12 +9,12 @@ import (
 
 	"lina-core/internal/dao"
 	"lina-core/internal/service/datascope"
-	"lina-core/internal/service/role"
 	"lina-core/pkg/bizerr"
 )
 
 // applyFileDataScope constrains file metadata queries by uploader.
 func (s *serviceImpl) applyFileDataScope(ctx context.Context, model *gdb.Model) (*gdb.Model, error) {
+	model = datascope.ApplyTenantScope(ctx, model, dao.SysFile.Table()+"."+datascope.TenantColumn)
 	scopedModel, empty, err := s.currentScopeSvc().ApplyUserScope(ctx, model, qualifiedSysFileCreatedByColumn())
 	if err != nil {
 		return nil, mapFileDataScopeError(err)
@@ -32,17 +32,17 @@ func (s *serviceImpl) ensureFilesVisible(ctx context.Context, ids []int64) error
 		return nil
 	}
 	model := dao.SysFile.Ctx(ctx).WhereIn(dao.SysFile.Columns().Id, normalizedIDs)
+	model = datascope.ApplyTenantScope(ctx, model, datascope.TenantColumn)
 	err := s.currentScopeSvc().EnsureRowsVisible(ctx, model, qualifiedSysFileCreatedByColumn(), len(normalizedIDs))
 	return mapFileDataScopeError(err)
 }
 
 // currentScopeSvc returns the shared data-scope service for file operations.
 func (s *serviceImpl) currentScopeSvc() datascope.Service {
-	return datascope.New(datascope.Dependencies{
-		BizCtxSvc: s.bizCtxSvc,
-		RoleSvc:   role.New(nil),
-		OrgCapSvc: s.orgCapSvc,
-	})
+	if s != nil && s.scopeSvc != nil {
+		return s.scopeSvc
+	}
+	return nil
 }
 
 // mapFileDataScopeError maps shared data-scope errors to file service errors.

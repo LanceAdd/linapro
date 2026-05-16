@@ -17,6 +17,7 @@ import (
 	pluginsvc "lina-core/internal/service/plugin"
 	"lina-core/internal/service/role"
 	"lina-core/internal/service/session"
+	tenantcapsvc "lina-core/internal/service/tenantcap"
 	"lina-core/pkg/pluginhost"
 )
 
@@ -40,6 +41,8 @@ type HTTPMiddleware interface {
 	RequestBodyLimit(r *ghttp.Request)
 	// Auth validates JWT token and injects user info into context.
 	Auth(r *ghttp.Request)
+	// Tenancy resolves tenant identity and injects it into context.
+	Tenancy(r *ghttp.Request)
 	// RequirePermission declares static permission requirements for manually registered routes.
 	RequirePermission(permissions ...string) ghttp.HandlerFunc
 	// Permission enforces declarative permission requirements declared on static host API handlers.
@@ -71,6 +74,7 @@ type serviceImpl struct {
 	i18nSvc   middlewareI18nService // i18nSvc resolves request locale and translation context.
 	pluginSvc pluginsvc.Service     // Plugin service
 	roleSvc   role.Service          // Role and permission service
+	tenantSvc tenantcapsvc.Service  // Tenant capability service
 }
 
 // middlewareI18nService defines the locale and error localization capabilities middleware needs.
@@ -79,16 +83,16 @@ type middlewareI18nService interface {
 	i18nsvc.Translator
 }
 
-// New creates and returns a new Service instance.
-func New() Service {
-	pluginSvc := pluginsvc.New(nil)
+// New creates a middleware service from explicit runtime-owned dependencies.
+func New(authSvc auth.Service, bizCtxSvc bizctx.Service, configSvc config.Service, i18nSvc middlewareI18nService, pluginSvc pluginsvc.Service, roleSvc role.Service, tenantSvc tenantcapsvc.Service) Service {
 	return &serviceImpl{
-		authSvc:   auth.New(nil),
-		bizCtxSvc: bizctx.New(),
-		configSvc: config.New(),
-		i18nSvc:   i18nsvc.New(),
+		authSvc:   authSvc,
+		bizCtxSvc: bizCtxSvc,
+		configSvc: configSvc,
+		i18nSvc:   i18nSvc,
 		pluginSvc: pluginSvc,
-		roleSvc:   role.New(pluginSvc),
+		roleSvc:   roleSvc,
+		tenantSvc: tenantSvc,
 	}
 }
 
@@ -110,6 +114,7 @@ func (s *serviceImpl) PublishedRouteMiddlewares() pluginhost.RouteMiddlewares {
 		s.RequestBodyLimit,
 		s.Ctx,
 		s.Auth,
+		s.Tenancy,
 		s.Permission,
 	)
 }
@@ -160,16 +165,28 @@ func (s *serviceImpl) Auth(r *ghttp.Request) {
 	// Update last active time and validate session exists (supports forced logout and timeout cleanup)
 	exists, err := s.authSvc.SessionStore().TouchOrValidate(
 		r.Context(),
+		claims.TenantId,
 		claims.TokenId,
 		sessionTimeout,
 	)
 	if err != nil || !exists {
 		s.roleSvc.InvalidateTokenAccessContext(r.Context(), claims.TokenId)
+		if err != nil {
+			r.SetError(err)
+		}
 		r.Response.WriteStatus(http.StatusUnauthorized)
 		return
 	}
 
 	// Inject user info into business context.
 	s.bizCtxSvc.SetUser(r.Context(), claims.TokenId, claims.UserId, claims.Username, claims.Status)
+	s.bizCtxSvc.SetTenant(r.Context(), claims.TenantId)
+	s.bizCtxSvc.SetImpersonation(
+		r.Context(),
+		claims.ActingUserId,
+		claims.TenantId,
+		claims.IsImpersonation,
+		claims.IsImpersonation,
+	)
 	r.Middleware.Next()
 }

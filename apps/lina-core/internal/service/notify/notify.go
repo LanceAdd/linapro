@@ -6,6 +6,8 @@ import (
 	"context"
 
 	"github.com/gogf/gf/v2/os/gtime"
+
+	tenantcapsvc "lina-core/internal/service/tenantcap"
 )
 
 // Service defines the notify service contract.
@@ -34,7 +36,9 @@ type Service interface {
 var _ Service = (*serviceImpl)(nil)
 
 // serviceImpl implements Service.
-type serviceImpl struct{}
+type serviceImpl struct {
+	tenantSvc tenantcapsvc.Service
+}
 
 // SendInput defines one unified notification send request.
 type SendInput struct {
@@ -128,7 +132,7 @@ type InboxListItem struct {
 	CreatedAt *gtime.Time
 }
 
-// New creates and returns a new notify service instance.
-func New() Service {
-	return &serviceImpl{}
+// New creates a notify service from explicit runtime-owned dependencies.
+func New(tenantSvc tenantcapsvc.Service) Service {
+	return &serviceImpl{tenantSvc: tenantSvc}
 }

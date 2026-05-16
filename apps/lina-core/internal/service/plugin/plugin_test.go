@@ -5,73 +5,53 @@ package plugin
 import (
 	"context"
 	"encoding/base64"
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"sync"
 	"testing"
 
 	"lina-core/internal/model/entity"
+	"lina-core/internal/service/bizctx"
+	"lina-core/internal/service/cachecoord"
+	configsvc "lina-core/internal/service/config"
+	"lina-core/internal/service/coordination"
+	i18nsvc "lina-core/internal/service/i18n"
 	"lina-core/internal/service/plugin/internal/catalog"
-	"lina-core/internal/service/plugin/internal/testutil"
+	"lina-core/internal/service/session"
+	tenantcapsvc "lina-core/internal/service/tenantcap"
 	"lina-core/pkg/pluginbridge"
 )
 
-// TestMain keeps package-level tests self-contained by generating the bundled
-// dynamic sample artifact before any test scans the shared plugin workspace.
-func TestMain(m *testing.M) {
-	if err := ensureBundledRuntimeSampleArtifactForTests(); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "failed to prepare bundled dynamic sample: %v\n", err)
-		os.Exit(1)
-	}
-
-	os.Exit(m.Run())
-}
-
-// ensureBundledRuntimeSampleArtifactForTests rebuilds the shared bundled
-// dynamic sample so plugin package tests can rely on one up-to-date artifact.
-func ensureBundledRuntimeSampleArtifactForTests() error {
-	repoRoot, err := testutil.FindRepoRoot(".")
-	if err != nil {
-		return err
-	}
-
-	pluginDir := filepath.Join(repoRoot, "apps", "lina-plugins", "plugin-demo-dynamic")
-	if _, statErr := os.Stat(filepath.Join(pluginDir, "plugin.yaml")); statErr != nil {
-		if os.IsNotExist(statErr) {
-			return nil
-		}
-		return statErr
-	}
-
-	builderDir := filepath.Join(repoRoot, "hack", "tools", "build-wasm")
-	cmd := exec.Command(
-		"go",
-		"run",
-		".",
-		"--plugin-dir",
-		pluginDir,
-		"--output-dir",
-		testutil.TestDynamicStorageDir(),
-	)
-	cmd.Dir = builderDir
-	cmd.Env = append(os.Environ(), "GOWORK="+filepath.Join(repoRoot, "go.work"))
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("run hack/tools/build-wasm failed: %w: %s", err, string(output))
-	}
-	return nil
-}
-
 // newTestService constructs the root plugin facade with default single-node topology.
 func newTestService() *serviceImpl {
-	return New(nil).(*serviceImpl)
+	return newTestServiceWithTopology(nil)
 }
 
 // newTestServiceWithTopology constructs the root plugin facade with one explicit topology.
 func newTestServiceWithTopology(topology Topology) *serviceImpl {
-	return New(topology).(*serviceImpl)
+	var (
+		configProvider = configsvc.New()
+		bizCtxProvider = bizctx.New()
+		cacheCoordSvc  = cachecoord.Default(cachecoord.NewStaticTopology(false))
+	)
+	if topology != nil && topology.IsEnabled() {
+		cachecoord.DefaultWithCoordination(topology, coordination.NewMemory(nil))
+		cacheCoordSvc = cachecoord.Default(topology)
+	}
+	i18nSvc := i18nsvc.New(bizCtxProvider, configProvider, cacheCoordSvc)
+	service := New(topology, configProvider, bizCtxProvider, cacheCoordSvc, i18nSvc, session.NewDBStore()).(*serviceImpl)
+	service.SetTenantCapability(tenantcapsvc.New(service, bizCtxProvider))
+	return service
+}
+
+// TestNewRequiresExplicitRuntimeDependencies verifies the root plugin service
+// does not silently create critical runtime dependencies when callers omit them.
+func TestNewRequiresExplicitRuntimeDependencies(t *testing.T) {
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatal("expected plugin service construction to fail without explicit dependencies")
+		}
+	}()
+
+	New(nil, nil, nil, nil, nil, nil)
 }
 
 // getPluginRegistry loads one plugin registry row for assertions in root-package tests.

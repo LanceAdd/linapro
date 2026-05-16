@@ -11,6 +11,7 @@ import (
 // SysUser is the golang structure for table sys_user.
 type SysUser struct {
 	Id        int         `json:"id"        orm:"id"         description:"User ID"`
+	TenantId  int         `json:"tenantId"  orm:"tenant_id"  description:"Primary/default tenant ID, 0 means PLATFORM"`
 	Username  string      `json:"username"  orm:"username"   description:"Username"`
 	Password  string      `json:"password"  orm:"password"   description:"Password"`
 	Nickname  string      `json:"nickname"  orm:"nickname"   description:"User nickname"`

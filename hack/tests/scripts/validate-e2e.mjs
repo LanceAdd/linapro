@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 import {
@@ -8,9 +9,17 @@ import {
   exists,
   highRiskRules,
   isolationAllowlist,
+  isPluginWorkspaceReady,
+  isHostTcFile,
+  isPluginTcFile,
   knownIsolationCategorySet,
+  listLegacyPluginE2EDirs,
+  listPluginE2EFiles,
   listTcFiles,
   loadManifest,
+  pluginTestEntry,
+  pluginTestRelativePath,
+  repoRoot,
   resolveEntries,
   serialCategoryMap,
   serialFileSet,
@@ -22,6 +31,7 @@ import {
 
 const manifest = loadManifest();
 const errors = [];
+const pluginWorkspaceReady = isPluginWorkspaceReady();
 const highRiskRuleByCategory = new Map(
   highRiskRules.map((rule) => [rule.category, rule]),
 );
@@ -31,7 +41,31 @@ function addError(message) {
   errors.push(message);
 }
 
+function validateFrontendI18nKeys() {
+  const result = spawnSync('pnpm', ['-F', '@lina/web-antd', 'i18n:check'], {
+    cwd: path.resolve(testsDir, '../../apps/lina-vben'),
+    encoding: 'utf8',
+  });
+
+  if (result.status !== 0) {
+    addError(
+      [
+        'Frontend i18n key validation failed.',
+        result.stdout.trim(),
+        result.stderr.trim(),
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    );
+  }
+}
+
+validateFrontendI18nKeys();
+
 function readTestFile(relativePath) {
+  if (relativePath.startsWith('apps/lina-plugins/')) {
+    return readFileSync(path.resolve(repoRoot, relativePath), 'utf8');
+  }
   return readFileSync(path.resolve(testsDir, relativePath), 'utf8');
 }
 
@@ -75,14 +109,53 @@ function validateReason(reason, ownerLabel) {
   }
 }
 
-const allFiles = walk(e2eDir).map((item) => toPosix(path.relative(testsDir, item)));
+const allFiles = [
+  ...walk(e2eDir).map((item) => toPosix(path.relative(testsDir, item))),
+  ...listPluginE2EFiles(),
+];
+const legacyPluginE2EDirs = listLegacyPluginE2EDirs();
 const testFiles = [];
 const tcRegistry = new Map();
-const allowedPrefixes = new Set(
+const allowedFiles = new Set(
   Object.values(manifest.moduleScopes)
     .flat()
-    .map((entry) => entry.replace(/\/$/, '')),
+    .flatMap((entry) => listTcFiles(entry)),
 );
+
+function entryExistsOrResolves(entry) {
+  if (listTcFiles(entry).length > 0) {
+    return true;
+  }
+  if (entry === pluginTestEntry) {
+    return true;
+  }
+  if (
+    entry.startsWith('plugins/') ||
+    entry.startsWith('apps/lina-plugins/')
+  ) {
+    return false;
+  }
+  return exists(path.resolve(testsDir, entry));
+}
+
+function isPluginEntry(entry) {
+  return (
+    entry === pluginTestEntry ||
+    entry.startsWith('plugins/') ||
+    entry.startsWith('apps/lina-plugins/')
+  );
+}
+
+function isPluginScope(scope, entries) {
+  return scope === pluginTestEntry || entries.some((entry) => isPluginEntry(entry));
+}
+
+for (const directory of legacyPluginE2EDirs) {
+  const relativePath = pluginTestRelativePath(directory);
+  addError(
+    `Legacy plugin E2E directory found: ${relativePath}. Use apps/lina-plugins/<plugin-id>/hack/tests/{e2e,pages,support}/ instead.`,
+  );
+}
 
 for (const file of allFiles) {
   if (!file.endsWith('.ts')) {
@@ -90,7 +163,7 @@ for (const file of allFiles) {
     continue;
   }
 
-  if (!/\/TC\d{4}[-][^.]+\.ts$/u.test(file) && !/^e2e\/TC\d{4}[-][^.]+\.ts$/u.test(file)) {
+  if (!isHostTcFile(file) && !isPluginTcFile(file)) {
     addError(`Non-test file found under e2e: ${file}`);
     continue;
   }
@@ -105,11 +178,7 @@ for (const file of allFiles) {
   items.push(file);
   tcRegistry.set(tcId, items);
 
-  const fileDir = path.posix.dirname(file);
-  const matchesAllowedPrefix = [...allowedPrefixes].some((prefix) => {
-    return fileDir === prefix || fileDir.startsWith(`${prefix}/`);
-  });
-  if (!matchesAllowedPrefix) {
+  if (!allowedFiles.has(file)) {
     addError(`File is not under an allowed module scope: ${file}`);
   }
 }
@@ -121,21 +190,24 @@ for (const [tcId, files] of tcRegistry.entries()) {
 }
 
 for (const [scope, entries] of Object.entries(manifest.moduleScopes)) {
+  if (!pluginWorkspaceReady && isPluginScope(scope, entries)) {
+    continue;
+  }
   const files = entries.flatMap((entry) => listTcFiles(entry));
-  if (files.length === 0) {
+  if (files.length === 0 && scope !== pluginTestEntry) {
     addError(`Module scope has no matching test files: ${scope}`);
   }
 }
 
 for (const entry of manifest.smoke ?? []) {
-  if (!exists(path.resolve(testsDir, entry))) {
+  if (!entryExistsOrResolves(entry)) {
     addError(`Smoke entry does not exist: ${entry}`);
   }
 }
 
 const serialEntries = requireArray(manifest.serial ?? [], 'serial');
 for (const entry of serialEntries) {
-  if (!exists(path.resolve(testsDir, entry))) {
+  if (!entryExistsOrResolves(entry)) {
     addError(`Serial entry does not exist: ${entry}`);
   }
 }
@@ -154,7 +226,7 @@ for (const [index, item] of isolationEntries.entries()) {
     addError(`${owner}.entry must be a non-empty string.`);
     continue;
   }
-  if (!exists(path.resolve(testsDir, item.entry))) {
+  if (!entryExistsOrResolves(item.entry)) {
     addError(`${owner}.entry does not exist: ${item.entry}`);
   }
   if (!serialEntrySet.has(item.entry)) {
@@ -168,7 +240,7 @@ for (const [index, item] of isolationEntries.entries()) {
   validateReason(item.reason, owner);
 
   const resolvedFiles = listTcFiles(item.entry);
-  if (resolvedFiles.length === 0) {
+  if (resolvedFiles.length === 0 && item.entry !== pluginTestEntry) {
     addError(`${owner}.entry does not resolve to any TC file: ${item.entry}`);
   }
 }

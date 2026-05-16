@@ -2,42 +2,55 @@
 # LinaPro 测试指令
 # ===================
 
+TEST_GO_ARGS :=
+ifneq ($(origin plugins), undefined)
+TEST_GO_ARGS += plugins=$(plugins)
+endif
+ifneq ($(origin race), undefined)
+TEST_GO_ARGS += race=$(race)
+endif
+ifneq ($(origin verbose), undefined)
+TEST_GO_ARGS += verbose=$(verbose)
+endif
+
 # Run the complete Playwright E2E test suite.
 # 运行完整的 Playwright E2E 测试套件。
 ## test: Run the full E2E test suite
 .PHONY: test
 test:
-	@echo "Running E2E test suite..."
-	cd hack/tests && pnpm test
+	@$(LINACTL) test scope="$(scope)"
 
-# Run shell script unit and smoke tests for repository tooling.
-# 运行仓库工具脚本的单元与 smoke 测试。
-## test-scripts: Run shell script unit and smoke tests
-.PHONY: test-scripts
-test-scripts:
-	@echo "Running shell script tests..."
-	@for test_file in hack/tests/scripts/*.sh; do \
-		echo "==> $$test_file"; \
-		bash "$$test_file"; \
-	done
+# Run cross-platform repository tool smoke checks.
+# 运行跨平台仓库工具 smoke 检查。
+## test.scripts: Run cross-platform repository tool smoke checks
+.PHONY: test.scripts
+test.scripts:
+	@$(LINACTL) test.scripts
 
 # Run Go unit tests for every workspace module with the race detector enabled.
 # 对所有 Go workspace 模块运行单元测试，并启用竞态检测。
-## test-go: Run Go unit tests with the race detector
-.PHONY: test-go
-test-go:
-	@echo "Running Go unit tests with race detector..."
-	@set -e; \
-	module_file="$$(mktemp)"; \
-	go list -m -f '{{.Dir}}' > "$$module_file"; \
-	if [ ! -s "$$module_file" ]; then \
-		echo "No Go workspace modules discovered"; \
-		exit 1; \
-	fi; \
-	while IFS= read -r module_dir; do \
-		if [ -z "$$module_dir" ]; then \
-			continue; \
-		fi; \
-		echo "==> go test -race -v $$module_dir"; \
-		(cd "$$module_dir" && go test -race -v ./...); \
-	done < "$$module_file"
+## test.go: Run Go unit tests with the race detector
+.PHONY: test.go
+test.go:
+	@$(LINACTL) test.go $(TEST_GO_ARGS)
+
+# Run go mod tidy in every maintained Go module directory.
+# 在每个受维护的 Go 模块目录下运行 go mod tidy。
+## tidy: Run go mod tidy in every Go module
+.PHONY: tidy
+tidy:
+	@$(LINACTL) tidy
+
+# Run only host-owned Playwright E2E tests. This target does not require the
+# official plugin submodule.
+## test.host: Run host-owned Playwright E2E tests without requiring official plugins
+.PHONY: test.host
+test.host:
+	@$(LINACTL) test.host
+
+# Run source-plugin-owned Playwright E2E tests. This target requires the
+# official plugin submodule.
+## test.plugins: Run official plugin Playwright E2E tests
+.PHONY: test.plugins
+test.plugins:
+	@$(LINACTL) test.plugins

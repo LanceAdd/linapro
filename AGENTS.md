@@ -1,118 +1,3 @@
-重要规则：当前项目是全新项目，没有历史遗留问题和技术债务，因此在设计方案和实施的时候不需要考虑兼容性。例如，`sql`语句不需要考虑兼容性的`sql`语句，而是直接在原有的`sql`文件上修改，重新初始化数据表即可。
-
-
-# 项目概述
-
-`LinaPro`是一个`面向可持续交付的 AI 原生全栈框架`，把 `AI` 作为核心生产力：`AI` 主导分析、设计与实现，团队把握方向与关键决策。`LinaPro`将后端服务、前端工作台、可插拔插件体系与规范驱动的AI研发工作流融为一体，构成一套完整的全栈交付框架。框架内置开箱即用的默认管理工作台，覆盖了绝大多数业务系统所需的权限管理、系统配置、任务调度等基础能力，让新项目无需从零搭建即可直接投入业务开发。
-
-- **前端**: `Vben5 + Vue 3 + Ant Design Vue + TypeScript`
-- **后端**: `GoFrame + PostgreSQL + JWT + 源码/Wasm 插件运行时`
-- **研发流程**: `SDD + OpenSpec`
-
-## 默认账号
-
-- 用户名称: `admin`
-- 登录密码: `admin123`
-
-## 目录结构
-
-```text
-apps/                → MonoRepo项目目录
-  lina-core/         → 全栈开发框架的核心宿主服务（GoFrame）
-    api/             → 请求/响应 DTO（g.Meta 路由定义）
-    internal/        → 后端核心代码实现
-      cmd/           → 服务启动 & 路由注册
-      controller/    → HTTP控制器（gf gen ctrl 自动生成骨架）
-      dao/           → 数据访问层（gf gen dao 自动生成）
-      model/         → 数据模型
-        do/          → 数据操作对象（自动生成）
-        entity/      → 数据库实体（自动生成）
-      service/       → 业务逻辑层
-    manifest/        → 交付清单
-      config/        → 后端配置文件
-      sql/           → DDL + Seed DML（版本 SQL 文件）
-        mock-data/   → Mock 演示/测试数据（不随生产部署）
-  lina-vben/         → 默认管理工作台（Vben5 前端 pnpm monorepo）
-    apps/web-antd/   → 默认管理工作台应用（Ant Design Vue）
-    packages/        → 共享库（@core, effects, stores, utils 等）
-  lina-plugins/      → 插件样例与插件开发参考入口
-    <plugin-id>/     → 源码插件目录（统一结构）
-      backend/       → 插件后端入口与实现
-        api/         → 插件 API DTO 与路由接口定义
-        internal/    → 插件后端内部实现
-          controller/ → HTTP控制器
-          service/    → 业务逻辑层
-          dao/        → 数据访问层（gf gen dao 自动生成，按需生成）
-          model/      → 数据模型（按需生成）
-            do/       → 数据操作对象（自动生成）
-            entity/   → 数据库实体（自动生成）
-        hack/        → 插件 codegen 与开发配置（如 hack/config.yaml）
-        plugin.go    → 插件后端注册入口
-      frontend/      → 插件前端页面与资源
-      manifest/      → 插件安装/卸载与交付资源
-      plugin.yaml    → 插件清单
-      plugin_embed.go → 插件嵌入资源入口
-hack/                → 项目脚本及测试用例文件
-  tests/             → E2E 测试（Playwright）
-    e2e/             → 测试用例文件
-    fixtures/        → 测试 fixtures（auth, config）
-    pages/           → 页面对象模型
-openspec/            → OpenSpec相关文档
-  changes/           → OpenSpec变更记录
-```
-
-## 常用命令
-
-### 开发环境
-
-```bash
-make dev                         # 启动前后端（前端:5666, 后端:8080）
-make stop                        # 停止所有服务
-make status                      # 查看服务状态
-make test                        # 运行完整E2E测试
-make init                        # 初始化数据库（DDL + Seed 数据）
-make mock                        # 加载 Mock 演示数据（需先执行 init）
-make image tag=v0.6.0            # 构建生产 Docker 镜像，可追加 registry=ghcr.io/linaproai push=1 推送
-# 升级框架/源码插件：通过 AI 工具调用 .claude/skills/lina-upgrade/ 技能，例如 "upgrade LinaPro framework to v0.6.0"
-make up                          # 默认用 claude 生成 commit message 并推送
-make up tool=codex               # 使用 codex 生成 commit message 并推送
-make up t=codex                  # tool 的短别名
-make up tool=codex               # codex 默认模型为 gpt-5.1-codex-mini
-make up tool=codex model=gpt-5.2 # 指定 AI 工具和模型（兼容 m=...）
-```
-
-### 后端
-
-```bash
-cd apps/lina-core
-go run main.go          # 运行
-make build              # 构建
-make dao                # 生成 DAO/DO/Entity（修改 SQL 后）
-make ctrl               # 生成控制器骨架（修改 API 定义后）
-```
-
-### 前端
-
-```bash
-cd apps/lina-vben
-pnpm install                   # 安装依赖
-pnpm -F @lina/web-antd dev     # 开发模式
-pnpm run build                 # 构建
-```
-
-### E2E 测试
-
-```bash
-cd hack/tests
-pnpm test              # 运行全部测试
-pnpm test:headed       # 带浏览器界面运行
-pnpm test:ui           # 交互式测试界面
-pnpm test:debug        # 调试模式
-pnpm report            # 查看 HTML 报告
-```
-
-测试文件命名规范：`TC{NNNN}*.ts`（如 `TC0001-login.ts`），放在 `hack/tests/e2e/` 对应模块目录下。
-
 # 文档编写规范
 
 `README.md`等技术文档编写需遵循规范`.agents/instructions/markdown-format.instructions.md`。
@@ -132,9 +17,11 @@ pnpm report            # 查看 HTML 报告
 5. 用户确认本次迭代功能已完成没有问题后，则执行`/opsx:archive`斜杠指令`.agents/prompts/opsx/archive.md`将本次变更归档。归档前需要调用`/lina-review`技能进行全面的变更审查，确保代码质量和规范遵循。
 
 **关键规则**：
+- 只有在`openspec`工具安装时才启用`openspec`执行流程，包括`/opsx:explore`、`/opsx:propose`、`/opsx:apply`和`/opsx:archive`等斜杠指令，以及相关的技能调用和文档生成；如果未安装`openspec`工具，则不启用这些功能，用户需要手动维护变更文档和执行流程。
 - **活跃`OpenSpec`变更的判定以是否归档为准**：凡是仍位于`openspec/changes/`根目录下、且**未移动到**`openspec/changes/archive/`中的变更目录，都属于活跃变更；**即便该变更已经完成了全部任务、`openspec list --json`中显示为`status: complete`，只要尚未执行归档，仍然必须视为活跃变更**。
-- 当用户报告问题缺陷/改进建议时（无论中文或英文），如果当前项目存在活跃的`OpenSpec`变更，那么必须调用`lina-feedback`技能。**在用户未明确要求新建变更的前提下，无论反馈内容是否与当前活跃迭代的主要功能相关，都必须追加到当前活跃迭代中**，便于统一管理和归档。
+- 当用户报告问题缺陷/改进建议时（无论中文或英文），如果当前项目存在活跃的`OpenSpec`变更，那么必须调用`lina-feedback`技能。
 - 审查技能`/lina-review`自动在以下节点触发：`/opsx:apply`任务完成后、`/opsx:feedback`任务完成后、`/opsx:archive`归档前。
+- **后端 Go 编译门禁要求**：任何新增或修改 `Go` 生产代码的任务，在标记完成和通过 `/lina-review` 前，必须基于当前工作区运行至少覆盖变更包的 `go test <changed-package> -count=1` 或等价编译烟测；涉及 `Controller` 构造函数、路由绑定、启动编排或 API 接口签名的变更，还必须运行对应宿主/插件启动绑定包测试（宿主为 `cd apps/lina-core && go test ./internal/cmd -count=1` 或更窄但能覆盖路由构造的测试）。不得仅依赖 `git diff --check`、静态扫描、OpenSpec 校验或历史验证记录来认定后端 Go 变更可编译。若某个包测试因外部依赖不可用无法运行，必须至少运行能完成编译的替代命令，并在任务记录和审查结论中说明阻断原因、替代覆盖范围和剩余风险。
 - 在执行任务时，如果存在适合通过`subagent`并行推进且能够明确提升执行效率的场景，必须优先评估并采用`subagent`协作方式执行，以降低上下文窗口溢出的风险；仅在任务强依赖串行上下文、拆分成本过高或引入明显协作风险时，才可不使用`subagent`。
 - **i18n持续治理要求**：所有功能改动都必须评估对`i18n`的影响面，包括新增功能、修改现有功能、删除功能、调整菜单/路由/按钮/表单/表格/提示文案、接口文档、插件清单与初始化资源等场景；在方案设计、任务拆分、代码实现、测试和审查中必须明确判断相关`i18n JSON`翻译内容是否需要新增、修改或删除，并同步维护前端运行时语言包、宿主/插件运行时`manifest/i18n`资源以及`apidoc i18n JSON`等对应资源，避免硬编码文案、遗漏翻译键或保留无效/过期翻译内容；若本次功能改动确认不影响`i18n`资源，也必须在任务执行或审查结论中明确记录该判断。新增内置语言必须通过新增对应`manifest/i18n/<locale>/*.json`、`manifest/i18n/<locale>/apidoc/**/*.json`资源以及默认配置文件中的`i18n.locales`元数据完成，禁止为了注册语言而修改后端`Go`枚举、宿主`SQL seed`或前端`TypeScript`语言清单；`i18n.enabled=false`时前端必须隐藏语言切换并按`i18n.default`展示。运行时翻译包缓存失效必须传入显式`scope`，按语言、扇区、插件或业务内容范围精细失效，禁止在普通业务路径中无理由清空所有语言和所有扇区。
 - **缓存一致性治理要求**：所有涉及缓存的设计、任务拆分和实现逻辑都必须明确评估分布式环境下的缓存一致性与可靠性问题，并给出对应解决方案。缓存控制逻辑必须复用宿主统一的集群模式开关与拓扑抽象（如 `cluster.enabled` 与 `cluster.Service`），将单机部署与分布式部署的策略显式区分：`cluster.enabled=false` 时可优先采用进程内缓存、本地失效和同步刷新，且不得强制依赖分布式协调组件；`cluster.enabled=true` 时必须启用跨实例失效、共享修订号、消息/事件广播、共享分布式缓存、主节点协调或等价机制，禁止退化为仅当前节点可见的本地缓存控制。新增或修改缓存时，必须说明缓存的权威数据源、一致性模型、失效/刷新触发点、跨实例同步机制、最大可接受陈旧时间和故障降级策略；禁止只依赖单机内存缓存、进程内状态或本地定时刷新来保证多实例一致性。涉及权限、配置、插件状态、租户隔离、字典、路由、国际化资源等关键运行时数据的缓存，必须采用显式作用域失效、版本化缓存键、共享分布式缓存、消息/事件广播、事务后失效或等价机制之一，并确保失效操作幂等、可重试、可观测；若业务允许短暂不一致，必须在设计和审查结论中写明可接受窗口、恢复路径和风险边界。
@@ -203,14 +90,24 @@ pnpm report            # 查看 HTML 报告
 
 # 代码开发规范
 
+## 开发工具与脚本规范
+
+- **开发工具和脚本必须跨平台执行**：所有新增或修改的开发、构建、测试、代码生成、资源打包、服务启停、CI 辅助和仓库治理入口，都必须能在 `Windows`、`Linux`、`macOS` 上执行，禁止依赖单一平台默认存在的命令或语义，例如 `bash`、`sh`、`sed`、`awk`、`grep`、`perl`、`lsof`、`pgrep`、`xargs`、`kill`、`rm`、`cp`、`mv`、`mkdir -p`、POSIX 路径分隔符、Unix 信号或 PowerShell 专属语法。确实只能在特定平台运行的操作必须写明平台边界、提供等价跨平台入口或在 CI/文档中显式标注为平台专属运维步骤，不能作为默认开发和测试入口。
+- **优先使用 Go 工具链实现仓库工具**：长期维护的开发工具和脚本应优先实现为 `Go` 工具，放在 `hack/tools/<tool>/` 并通过 `go run ./hack/tools/<tool>`、`linactl` 或薄包装入口调用。文件复制、目录遍历、配置改写、进程启停、端口探测、HTTP smoke、压缩/解压、模板渲染和静态扫描等逻辑应使用 Go 标准库或项目已有 Go 组件实现，避免用 Shell 管道拼接系统命令。根 `Makefile` 和 `make.cmd` 只允许作为兼容包装层，业务逻辑必须收敛到跨平台工具中。
+- **脚本目录治理**：`hack/scripts/` 不再作为长期维护开发工具目录；已有能力应迁移到 `hack/tools/linactl` 或独立 Go 工具。测试辅助入口若必须保留在 `hack/tests/scripts/`，应优先使用 `node` 或 `Go` 编写；新增或修改 `.sh`、`.ps1` 等平台脚本必须在变更记录和审查结论中说明无法使用 Go 工具链的原因、受支持平台、等价入口和验证方式。
+- **跨平台验证要求**：涉及开发工具或脚本的变更必须运行对应 Go 工具测试或跨平台 smoke（例如 `cd hack/tools/linactl && go test ./... -count=1`、`go run ./hack/tools/linactl test.scripts`），并通过静态扫描确认默认开发路径没有新增平台专属命令依赖。若本次变更确认不影响开发工具或脚本，也应在任务记录或审查结论中明确说明。
+
 ## 后端代码规范
 
 ### Go代码开发规范
-- 必须使用`goframe-v2`技能；该技能不随仓库源码附带，需先通过`lina-doctor`安装到用户全局技能目录，等价安装命令为`npx skills add github.com/gogf/skills -g`
+- 必须使用`goframe-v2`技能开发后端代码
 - 不能修改通过脚手架工具维护的代码文件，例如`api`层的接口方法定义文件、`dao`/`do`/`entity`层的代码文件等
 - 所有的源码必须要有注释介绍，例如包注释、文件注释、方法注释（无论公开方法还是私有方法）、常量注释、变量注释、关键逻辑注释等。
 - `DAO/DO/Entity`源码文件由`gf gen dao`自动生成，不要手动创建或修改
 - `Controller`源码文件由`gf gen ctrl`自动生成骨架，在生成的文件中填写业务逻辑
+- **后端运行期依赖必须显式注入**：宿主与源码插件的`Controller`、`Middleware`、`Service`、插件宿主服务适配器和`WASM host service`必须通过构造函数参数逐项显式接收运行期依赖，禁止在业务构造函数、请求处理路径、插件回调路径或`host service`调用路径中临时调用关键服务的`New()`创建独立服务图。禁止通过 `Dependencies`、`Deps`、`Options` 等聚合结构体把多个接口对象或服务对象字段整体传递给依赖方；接口型依赖必须在构造函数签名中拆分为独立参数，让依赖新增、删除或替换可以在编译阶段暴露所有未同步调用点。纯值配置（如字符串、布尔、`time.Duration`、容量阈值等）可以使用专门配置结构体，但不得混入接口型运行期依赖。关键服务包括但不限于认证、会话、角色/权限、数据权限、租户、组织能力、插件治理、运行时配置、i18n、通知、缓存协调、KV cache、分布式锁、插件运行时缓存和源码插件宿主服务适配器。启动期已有编排（如`cmd_http_runtime.go`、`cmd_http_routes.go`）、插件`registrar`和测试构造可以作为显式构造边界，但不得通过通用`DI`容器、全局`service locator`、聚合依赖结构体或新增兜底组装层规避依赖签名可见性。
+- **缓存敏感服务必须共享实例或共享后端**：凡是持有缓存、派生状态、失效观察状态、订阅状态、`session/token`状态、插件`enabled snapshot`、运行时配置快照、权限快照或跨实例协调依赖的组件，必须复用启动期传入的同一服务实例或同一共享后端。`cluster.enabled=false`时可以使用本地/SQL单机分支；`cluster.enabled=true`时必须使用宿主统一的`cluster.Service`、`coordination.Service`、共享修订号、事件广播、分布式 KV 或分布式锁等机制，禁止在中间件、插件管理、源码插件、动态插件`host service`或普通业务路径中退化为仅当前节点可见的默认实例。
+- **关键服务隐式构造必须纳入治理扫描**：生产后端代码新增或修改关键服务构造时，必须运行依赖治理扫描或等价静态验证，确认没有在非启动边界、非测试文件、非明确无状态豁免位置新增隐式`New()`调用。确实无状态、无缓存、无订阅、无`session/token`、无插件状态且无跨实例协调影响的局部构造，必须在代码审查或 OpenSpec 任务记录中说明理由，并维护在扫描允许列表中。
 - **后端代码中的时间长度统一使用`time.Duration`**：凡是表达超时、间隔、租约、保留期、有效期、退避时长等“时间长度”语义的变量、结构体字段、函数参数和返回值，统一使用`time.Duration`类型定义，禁止使用裸 `int` / `int64` 再隐含小时、分钟、秒语义
 - **配置文件中的时间长度统一使用带单位的字符串**：凡是配置项表达时间长度时，必须使用`"10s"`、`"5m"`、`"1h"`这类带单位的字符串格式，并在配置读取层统一解析为`time.Duration`，禁止使用`timeoutHour`、`intervalSeconds`这类把单位硬编码到字段名中的整数配置写法
 - **禁止在后端实现源码中硬编码具有枚举语义的字符串值**：凡是状态、类型、阶段、动作、执行模式、排序方向、过滤操作符等枚举语义值，必须使用 Go 命名类型与常量统一管理，禁止在业务分支、比较、赋值和持久化逻辑中直接写字符串字面量
@@ -221,7 +118,7 @@ pnpm report            # 查看 HTML 报告
 - **宿主通用组件分层规范**：`apps/lina-core/pkg/`只用于承载宿主与插件、构建工具链或跨组件复用的稳定公共组件；宿主私有共享代码应放在`internal`下具有明确职责名的包中。禁止新增`internal/util`、`internal/common`、`internal/helper`这类语义模糊的兜底目录；仅服务单一业务组件的辅助逻辑应优先放回该组件目录，需要被`internal`目录外复用时再提升到`pkg/<component>`，并补齐包注释、文件注释、公开方法注释与必要的关键逻辑说明
 - **禁止为已导入包的导出常量或变量创建包内别名**：当需要使用其他包导出的常量或变量时，必须直接通过`pkg.ExportedConst`方式引用，禁止在本包内通过`const localName = pkg.ExportedConst`或`var localName = pkg.ExportedVar`创建无意义的别名。这种别名增加了间接层且不提供任何类型安全或语义收益，只会降低可读性和可维护性
 - **禁止使用`_ = var`这类单独赋值语句掩盖未使用的参数或局部变量**：这类占位写法没有业务语义，只会制造“变量是否本应参与逻辑”的误导。应优先删除无用变量；若为满足接口签名或回调约束必须保留参数，应直接在函数签名中使用空白标识符（如`func(ctx context.Context, _ gdb.TX) error`）或省略不需要的接收者名称，而不是在函数体内追加`_ = tx`、`_ = req`、`_ = ctx`之类的单行语句
-- **单元测试必须自包含且顺序无关**：每个单元测试方法（如 Go 的 `TestXxx`）必须在自身函数内部闭环完成测试场景、数据、依赖替身和清理逻辑的构造与注册，可以复用 helper/fixture 函数，但必须由当前测试显式调用；禁止把其他测试方法的执行结果、数据库残留、全局状态、副作用或执行顺序作为当前测试通过的前提。测试清理必须使用当前测试注册的 `defer`/`t.Cleanup` 或等价机制完成，避免因测试顺序、单独运行、并行运行或 `-run` 精确筛选导致结果不符合预期。
+- **单元测试必须自包含且顺序无关**：每个单元测试方法（如 `Go` 的 `TestXxx`）必须在自身函数内部闭环完成测试场景、数据、依赖替身和清理逻辑的构造与注册，可以复用 helper/fixture 函数，但必须由当前测试显式调用；禁止把其他测试方法的执行结果、数据库残留、全局状态、副作用或执行顺序作为当前测试通过的前提。测试清理必须使用当前测试注册的 `defer`/`t.Cleanup` 或等价机制完成，避免因测试顺序、单独运行、并行运行或 `-run` 精确筛选导致结果不符合预期。
 - **文件顶部注释规范**：
   - 所有`Go`源码文件都必须在文件顶部增加文件用途注释说明。组件说明应写在该组件的主文件中，即与组件同名的主文件（如`plugin.go`、`config.go`、`file.go`）。
   - 主文件中的组件注释必须紧贴`package xxx`声明，中间不得有空行。例如：
@@ -414,6 +311,8 @@ dao.SysDictType.Ctx(ctx).Where(do.SysDictType{Id: id}).Delete()
 
 - 测试用例必须要完整覆盖业务模块的各项操作（如增删改查等操作），保证功能的完整性和可用性
 - 所有的用例需要在`tasks.md`中有工作记录，并且使用`lina-e2e`技能生成和管理对应的测试用例
+- 宿主功能测试放在 `hack/tests/e2e/<module>/`；源码插件专属功能测试必须放在 `apps/lina-plugins/<plugin-id>/hack/tests/e2e/`，不得放到宿主的`e2e`测试脚本目录下
+- 插件专属页面对象和 helper 必须放在插件自己的 `hack/tests/pages/`、`hack/tests/support/`；不得为了插件功能把专属定位器加到宿主的`e2e`测试脚本目录下
 - 修复`bug`或新增功能涉及**用户可观察行为变化**时，必须编写或更新对应的`E2E`测试用例
 - 涉及功能行为的 `bugfix` 反馈修复必须编写或更新至少一个自动化测试来验证修复有效性：内部逻辑缺陷可使用单元测试，用户可观察行为或跨模块工作流缺陷必须使用 `E2E` 测试；测试应覆盖原始问题的失败场景和修复后的预期行为
 - 纯项目治理类反馈不要求新增单元测试或`E2E`测试，应使用 `openspec validate`、静态扫描、文件检查、格式检查或审查结论等治理验证方式

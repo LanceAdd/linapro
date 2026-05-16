@@ -42,19 +42,20 @@ endif
 ifneq ($(origin v), undefined)
 IMAGE_BUILDER_ARGS += --verbose=$(v)
 endif
+ifneq ($(origin plugins), undefined)
+IMAGE_BUILDER_ARGS += plugins=$(plugins)
+endif
 
 # Build the production Docker image from the standard make build output.
 # 基于标准 make build 产物构建生产 Docker 镜像。
 ## image: Build the production Docker image from make build output and hack/config.yaml or config=<path>; supports tag=v0.6.0 registry=ghcr.io/linaproai push=1 platforms=linux/amd64,linux/arm64
 .PHONY: image
 image:
-	@go run ./hack/tools/image-builder --preflight $(IMAGE_BUILDER_ARGS)
-	@$(MAKE) build $(if $(config),config=$(config),) $(if $(platforms),platforms=$(platforms),) $(if $(cgo_enabled),cgo_enabled=$(cgo_enabled),) $(if $(output_dir),output_dir=$(output_dir),) $(if $(binary_name),binary_name=$(binary_name),) $(if $(verbose),verbose=$(verbose),) $(if $(v),v=$(v),)
-	@go run ./hack/tools/image-builder $(IMAGE_BUILDER_ARGS)
+	@$(LINACTL) image $(IMAGE_BUILDER_ARGS)
 
 # Prepare image build artifacts without invoking Docker build.
 # 仅准备镜像构建产物，不执行 Docker build。
-## image-build: Stage image build artifacts from make build output without running docker build
-.PHONY: image-build
-image-build: build
-	@go run ./hack/tools/image-builder --build-only $(IMAGE_BUILDER_ARGS)
+## image.build: Stage image build artifacts from make build output without running docker build
+.PHONY: image.build
+image.build:
+	@$(LINACTL) image.build $(IMAGE_BUILDER_ARGS)

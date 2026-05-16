@@ -4,7 +4,9 @@ package plugin
 
 import (
 	"context"
+
 	"lina-core/internal/service/bizctx"
+	"lina-core/internal/service/cachecoord"
 	configsvc "lina-core/internal/service/config"
 	i18nsvc "lina-core/internal/service/i18n"
 	"lina-core/internal/service/plugin/internal/catalog"
@@ -15,6 +17,8 @@ import (
 	"lina-core/internal/service/plugin/internal/runtime"
 	sourceupgradeinternal "lina-core/internal/service/plugin/internal/sourceupgrade"
 	"lina-core/internal/service/pluginruntimecache"
+	"lina-core/internal/service/session"
+	tenantcapsvc "lina-core/internal/service/tenantcap"
 
 	"lina-core/internal/model/entity"
 
@@ -26,9 +30,6 @@ import (
 )
 
 type (
-	// PluginItem is the display-ready projection of one plugin entry.
-	PluginItem = runtime.PluginItem
-
 	// DynamicUploadInput defines input for uploading a runtime WASM package.
 	DynamicUploadInput = runtime.DynamicUploadInput
 
@@ -63,11 +64,17 @@ type (
 		// Authorization optionally carries a host-service authorization snapshot for
 		// dynamic plugins that require explicit confirmation before install.
 		Authorization *HostServiceAuthorizationInput
+		// InstallMode optionally carries the platform operator's explicit tenant
+		// governance selection. Empty means use the plugin manifest default.
+		InstallMode string
 		// InstallMockData enables the optional mock-data load phase. When true the host
 		// scans manifest/sql/mock-data/ and executes those SQL files inside a single
 		// database transaction; any failure rolls back only the mock load and leaves
 		// the install SQL phase results intact.
 		InstallMockData bool
+		// dependencyResult records the server-side dependency plan and automatic
+		// installation result produced during this install request.
+		dependencyResult *DependencyCheckResult
 	}
 
 	// HostServiceAuthorizationDecision narrows one authorized service snapshot.
@@ -78,11 +85,20 @@ type (
 	ManagedCronJob = integration.ManagedCronJob
 )
 
+// PluginItem is the display-ready projection of one plugin entry.
+type PluginItem struct {
+	runtime.PluginItem
+	// DependencyCheck carries server-side dependency status for management UIs.
+	DependencyCheck *DependencyCheckResult
+}
+
 // UninstallOptions defines one plugin uninstall policy snapshot.
 type UninstallOptions struct {
 	// PurgeStorageData reports whether uninstall should also clear plugin-owned
 	// table data and stored files.
 	PurgeStorageData bool
+	// Force reports whether an authorized caller requested guard-veto bypass.
+	Force bool
 }
 
 // GetDynamicRouteMetadata returns generic dynamic-route metadata from the request.
@@ -177,6 +193,8 @@ type SourceIntegrationService interface {
 	ListSourceRouteBindings() []pluginhost.SourceRouteBinding
 	// RegisterCrons registers callback-contributed cron jobs for source plugins.
 	RegisterCrons(ctx context.Context) error
+	// SetHostServices wires the host-published service directory used by source plugins.
+	SetHostServices(services pluginhost.HostServices)
 	// ListManagedCronJobs returns plugin-owned cron definitions for projection into sys_job.
 	ListManagedCronJobs(ctx context.Context) ([]ManagedCronJob, error)
 	// ListManagedCronJobsByPlugin returns cron definitions owned by one plugin.
@@ -207,20 +225,21 @@ type LifecycleManagementService interface {
 	// BootstrapAutoEnable synchronizes manifests and ensures every plugin listed
 	// in plugin.autoEnable is installed and enabled before later host wiring runs.
 	BootstrapAutoEnable(ctx context.Context) error
-	// Install executes the install lifecycle and optionally persists one host-confirmed
-	// host service authorization snapshot when the target is a dynamic plugin. When
-	// options.InstallMockData is true the optional mock-data load phase runs inside one
-	// database transaction after install SQL completes; any failure rolls back only the
-	// mock load and leaves the install results intact.
+	// Install executes the install lifecycle and returns the dependency plan/results
+	// produced before the target plugin side effects. It optionally persists one
+	// host-confirmed host service authorization snapshot when the target is a
+	// dynamic plugin. When options.InstallMockData is true the optional mock-data
+	// load phase runs inside one database transaction after install SQL completes;
+	// any failure rolls back only the mock load and leaves the install results intact.
 	Install(
 		ctx context.Context,
 		pluginID string,
 		options InstallOptions,
-	) error
-	// Uninstall executes the uninstall lifecycle for an installed plugin.
-	Uninstall(ctx context.Context, pluginID string) error
-	// UninstallWithOptions executes the uninstall lifecycle with one explicit policy snapshot.
-	UninstallWithOptions(ctx context.Context, pluginID string, options UninstallOptions) error
+	) (*DependencyCheckResult, error)
+	// Uninstall executes the uninstall lifecycle with one explicit policy snapshot.
+	Uninstall(ctx context.Context, pluginID string, options UninstallOptions) error
+	// CheckPluginDependencies evaluates dependency status for plugin management UI.
+	CheckPluginDependencies(ctx context.Context, pluginID string) (*DependencyCheckResult, error)
 	// UpdateStatus updates plugin status, where status is 1=enabled and 0=disabled,
 	// and optionally persists one host-confirmed host service authorization snapshot
 	// before enabling a dynamic plugin.
@@ -234,10 +253,14 @@ type LifecycleManagementService interface {
 	Enable(ctx context.Context, pluginID string) error
 	// Disable disables the specified plugin.
 	Disable(ctx context.Context, pluginID string) error
+	// UpdateTenantProvisioningPolicy updates the platform-owned new-tenant plugin provisioning policy.
+	UpdateTenantProvisioningPolicy(ctx context.Context, pluginID string, autoEnableForNewTenants bool) error
 	// IsInstalled returns whether a plugin is installed.
 	IsInstalled(ctx context.Context, pluginID string) bool
 	// IsEnabled returns whether a plugin is enabled.
 	IsEnabled(ctx context.Context, pluginID string) bool
+	// EnsureTenantDeleteAllowed runs plugin lifecycle guards before tenant deletion.
+	EnsureTenantDeleteAllowed(ctx context.Context, tenantID int) error
 	// ListEnabledPluginIDs returns the IDs of plugins that are currently
 	// installed and enabled.
 	ListEnabledPluginIDs(ctx context.Context) ([]string, error)
@@ -255,6 +278,12 @@ type SourceUpgradeGovernanceService interface {
 	// ValidateSourcePluginUpgradeReadiness fails fast when any installed source
 	// plugin still has a newer discovered source version waiting to be upgraded.
 	ValidateSourcePluginUpgradeReadiness(ctx context.Context) error
+	// ValidateStartupConsistency fails fast when persisted plugin and tenant
+	// governance state is incoherent before routes are served.
+	ValidateStartupConsistency(ctx context.Context) error
+	// SetTenantCapability wires the runtime-owned tenant capability used by
+	// startup consistency checks that span plugin and tenant governance.
+	SetTenantCapability(service tenantcapsvc.Service)
 }
 
 // RegistryQueryService defines manifest synchronization and plugin list query operations.
@@ -264,6 +293,9 @@ type RegistryQueryService interface {
 	WithStartupDataSnapshot(ctx context.Context) (context.Context, error)
 	// SyncSourcePlugins scans source plugin manifests and synchronizes default status.
 	SyncSourcePlugins(ctx context.Context) error
+	// SyncSourcePluginsStrict synchronizes source plugins discovered by the
+	// running host.
+	SyncSourcePluginsStrict(ctx context.Context) (*ListOutput, error)
 	// SyncAndList scans plugin manifests, synchronizes plugin registry rows, and
 	// returns the combined list of source and dynamic plugin items.
 	SyncAndList(ctx context.Context) (*ListOutput, error)
@@ -345,30 +377,52 @@ type serviceImpl struct {
 	openapiSvc openapi.Service
 	// runtimeCacheRevisionCtrl coordinates process-local runtime caches in cluster deployments.
 	runtimeCacheRevisionCtrl *pluginruntimecache.Controller
+	// tenantSvc validates tenant-governance startup state through the runtime-owned tenant capability.
+	tenantSvc tenantcapsvc.Service
 }
 
 // New creates and returns a new plugin Service.
 // Pass a non-nil topology for cluster-aware deployments; pass nil to use the
 // default single-node topology implementation.
-func New(topology Topology) Service {
+func New(
+	topology Topology,
+	configProvider configsvc.Service,
+	bizCtxProvider bizctx.Service,
+	cacheCoordSvc cachecoord.Service,
+	i18nSvc i18nsvc.Service,
+	sessionStore session.Store,
+) Service {
+	if configProvider == nil {
+		panic("plugin service requires a non-nil config service")
+	}
+	if bizCtxProvider == nil {
+		panic("plugin service requires a non-nil bizctx service")
+	}
+	if cacheCoordSvc == nil {
+		panic("plugin service requires a non-nil cachecoord service")
+	}
+	if i18nSvc == nil {
+		panic("plugin service requires a non-nil i18n service")
+	}
+	if sessionStore == nil {
+		panic("plugin service requires a non-nil session store")
+	}
+
 	var topo Topology = singleNodeTopology{}
 	if topology != nil {
 		topo = topology
 	}
 
 	var (
-		configProvider   = configsvc.New()
-		bizCtxProvider   = bizctx.New()
 		catalogSvc       = catalog.New(configProvider)
 		lifecycleSvc     = lifecycle.New(catalogSvc)
 		frontendSvc      = frontend.New(catalogSvc)
 		openapiSvc       = openapi.New(catalogSvc)
-		runtimeSvc       = runtime.New(catalogSvc, lifecycleSvc, frontendSvc, openapiSvc)
+		runtimeSvc       = runtime.New(catalogSvc, lifecycleSvc, frontendSvc, openapiSvc, i18nSvc)
 		integrationSvc   = integration.New(catalogSvc)
-		sourceUpgradeSvc = sourceupgradeinternal.New(catalogSvc, lifecycleSvc, runtimeSvc, integrationSvc)
-		i18nSvc          = i18nsvc.New()
 		cacheRevisionCtl = newRuntimeCacheRevisionController(
 			topo,
+			cacheCoordSvc,
 			integrationSvc,
 			frontendSvc,
 			i18nSvc,
@@ -400,6 +454,7 @@ func New(topology Topology) Service {
 	runtimeSvc.SetJwtConfigProvider(&jwtConfigAdapter{configProvider})
 	runtimeSvc.SetUploadSizeProvider(&uploadSizeAdapter{configProvider})
 	runtimeSvc.SetUserContextSetter(&userCtxAdapter{bizCtxProvider})
+	runtimeSvc.SetSessionStore(sessionStore)
 
 	service := &serviceImpl{
 		configSvc:                configProvider,
@@ -408,11 +463,12 @@ func New(topology Topology) Service {
 		lifecycleSvc:             lifecycleSvc,
 		runtimeSvc:               runtimeSvc,
 		integrationSvc:           integrationSvc,
-		sourceUpgradeSvc:         sourceUpgradeSvc,
 		frontendSvc:              frontendSvc,
 		openapiSvc:               openapiSvc,
 		runtimeCacheRevisionCtrl: cacheRevisionCtl,
 	}
 	runtimeSvc.SetRuntimeCacheChangeNotifier(service)
+	runtimeSvc.SetDependencyValidator(service)
+	service.sourceUpgradeSvc = sourceupgradeinternal.New(catalogSvc, lifecycleSvc, runtimeSvc, integrationSvc, i18nSvc, service)
 	return service
 }

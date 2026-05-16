@@ -1,8 +1,0 @@
-{
-  "plugin": {
-    "demo-control": {
-      "description": "Official source plugin that enforces read-only protection in demo environments.",
-      "name": "Demo Control"
-    }
-  }
-}

@@ -4,15 +4,12 @@ package cachecoord
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gogf/gf/v2/database/gdb"
-
-	"lina-core/internal/dao"
-	"lina-core/internal/model/do"
-	"lina-core/internal/model/entity"
+	"lina-core/internal/service/coordination"
 	"lina-core/pkg/bizerr"
 	"lina-core/pkg/logger"
 )
@@ -22,6 +19,11 @@ const (
 	maxDomainBytes = 64
 	maxScopeBytes  = 128
 	maxReasonBytes = 255
+)
+
+// Coordination event kinds published by cachecoord.
+const (
+	cacheInvalidateEventKind = "cache.invalidate"
 )
 
 // revisionKey uniquely identifies one cache domain/scope revision row.
@@ -79,9 +81,24 @@ func (s *serviceImpl) MarkChanged(
 	scope Scope,
 	reason ChangeReason,
 ) (int64, error) {
+	return s.MarkTenantChanged(ctx, domain, scope, InvalidationScope{}, reason)
+}
+
+// MarkTenantChanged publishes one tenant-scoped cache domain/scope revision change.
+func (s *serviceImpl) MarkTenantChanged(
+	ctx context.Context,
+	domain Domain,
+	scope Scope,
+	tenantScope InvalidationScope,
+	reason ChangeReason,
+) (int64, error) {
 	key, err := s.resolveKey(domain, scope)
 	if err != nil {
 		return 0, err
+	}
+	key = revisionKey{
+		domain: key.domain,
+		scope:  ScopedScope(key.scope, tenantScope),
 	}
 
 	if !s.clusterEnabled() {
@@ -111,7 +128,35 @@ func (s *serviceImpl) MarkChanged(
 
 	s.storeObservedRevision(key, revision)
 	s.recordSuccess(key, revision, revision, time.Now())
+	if err = s.publishSharedEvent(ctx, key, tenantScope, revision, reason); err != nil {
+		s.recordFailure(key, err)
+		logger.Warningf(
+			ctx,
+			"publish cache coordination event failed domain=%s scope=%s err=%v",
+			key.domain,
+			key.scope,
+			err,
+		)
+		return 0, bizerr.WrapCode(
+			err,
+			CodeCacheCoordPublishFailed,
+			bizerr.P("domain", key.domain),
+			bizerr.P("scope", key.scope),
+		)
+	}
 	return revision, nil
+}
+
+// ScopedScope folds tenant invalidation metadata into the existing scope value.
+func ScopedScope(scope Scope, tenantScope InvalidationScope) Scope {
+	if tenantScope.TenantID == 0 && !tenantScope.CascadeToTenants {
+		return scope
+	}
+	suffix := "|tenant=" + strconv.FormatInt(int64(tenantScope.TenantID), 10)
+	if tenantScope.CascadeToTenants {
+		suffix += "|cascade=1"
+	}
+	return Scope(string(scope) + suffix)
 }
 
 // EnsureFresh refreshes local state if the shared or local revision advanced.
@@ -215,6 +260,7 @@ func (s *serviceImpl) Snapshot(ctx context.Context) ([]SnapshotItem, error) {
 	}
 	processCoordinationStatuses.RUnlock()
 
+	healthSnapshot := s.coordinationHealthSnapshot(ctx)
 	items := make([]SnapshotItem, 0, len(keys))
 	for _, key := range keys {
 		sharedRevision := int64(0)
@@ -229,7 +275,7 @@ func (s *serviceImpl) Snapshot(ctx context.Context) ([]SnapshotItem, error) {
 		} else {
 			sharedRevision = currentLocalRevision(key)
 		}
-		items = append(items, s.snapshotItem(key, sharedRevision))
+		items = append(items, s.snapshotItem(key, sharedRevision, healthSnapshot))
 	}
 	return items, nil
 }
@@ -241,62 +287,73 @@ func (s *serviceImpl) bumpSharedRevision(
 	key revisionKey,
 	reason ChangeReason,
 ) (int64, error) {
-	normalizedReason := normalizeReason(reason)
-	_, err := dao.SysCacheRevision.Ctx(ctx).Data(do.SysCacheRevision{
-		Domain:   key.domain,
-		Scope:    key.scope,
-		Revision: 0,
-		Reason:   normalizedReason,
-	}).InsertIgnore()
-	if err != nil {
-		return 0, err
+	coordinationSvc := s.coordinationSnapshot()
+	if coordinationSvc == nil || coordinationSvc.Revision() == nil {
+		return 0, bizerr.NewCode(
+			CodeCacheCoordRevisionUnavailable,
+			bizerr.P("domain", key.domain),
+			bizerr.P("scope", key.scope),
+		)
 	}
-
-	var revision int64
-	err = dao.SysCacheRevision.Transaction(ctx, func(ctx context.Context, _ gdb.TX) error {
-		var row *entity.SysCacheRevision
-		err = dao.SysCacheRevision.Ctx(ctx).Where(do.SysCacheRevision{
-			Domain: key.domain,
-			Scope:  key.scope,
-		}).LockUpdate().Scan(&row)
-		if err != nil {
-			return err
-		}
-		if row == nil {
-			return bizerr.NewCode(
-				CodeCacheCoordRevisionUnavailable,
-				bizerr.P("domain", key.domain),
-				bizerr.P("scope", key.scope),
-			)
-		}
-
-		revision = row.Revision + 1
-		_, err = dao.SysCacheRevision.Ctx(ctx).Where(do.SysCacheRevision{Id: row.Id}).Data(do.SysCacheRevision{
-			Revision: revision,
-			Reason:   normalizedReason,
-		}).Update()
-		return err
-	})
-	if err != nil {
-		return 0, err
-	}
-	return revision, nil
+	return coordinationSvc.Revision().Bump(ctx, coordination.RevisionKey{
+		TenantID: 0,
+		Domain:   string(key.domain),
+		Scope:    string(key.scope),
+	}, normalizeReason(reason))
 }
 
 // currentSharedRevision reads the persistent revision for one domain/scope.
 func (s *serviceImpl) currentSharedRevision(ctx context.Context, key revisionKey) (int64, error) {
-	var row *entity.SysCacheRevision
-	err := dao.SysCacheRevision.Ctx(ctx).Where(do.SysCacheRevision{
-		Domain: key.domain,
-		Scope:  key.scope,
-	}).Scan(&row)
-	if err != nil {
-		return 0, err
+	coordinationSvc := s.coordinationSnapshot()
+	if coordinationSvc == nil || coordinationSvc.Revision() == nil {
+		return 0, bizerr.NewCode(
+			CodeCacheCoordRevisionUnavailable,
+			bizerr.P("domain", key.domain),
+			bizerr.P("scope", key.scope),
+		)
 	}
-	if row == nil {
-		return 0, nil
+	return coordinationSvc.Revision().Current(ctx, coordination.RevisionKey{
+		TenantID: 0,
+		Domain:   string(key.domain),
+		Scope:    string(key.scope),
+	})
+}
+
+// publishSharedEvent sends a best-effort low-latency invalidation event after
+// the shared revision has advanced. Revision reads remain the source of truth
+// for missed or duplicated events.
+func (s *serviceImpl) publishSharedEvent(
+	ctx context.Context,
+	key revisionKey,
+	tenantScope InvalidationScope,
+	revision int64,
+	reason ChangeReason,
+) error {
+	coordinationSvc := s.coordinationSnapshot()
+	if coordinationSvc == nil || coordinationSvc.Events() == nil {
+		return nil
 	}
-	return row.Revision, nil
+	sourceNode := ""
+	if topology := s.topologySnapshot(); topology != nil {
+		sourceNode = topology.NodeID()
+	}
+	return coordinationSvc.Events().Publish(ctx, coordination.Event{
+		ID:               eventID(key, revision),
+		Kind:             cacheInvalidateEventKind,
+		Domain:           string(key.domain),
+		Scope:            string(key.scope),
+		TenantID:         int64(tenantScope.TenantID),
+		CascadeToTenants: tenantScope.CascadeToTenants,
+		Revision:         revision,
+		Reason:           normalizeReason(reason),
+		SourceNode:       sourceNode,
+		CreatedAt:        time.Now(),
+	})
+}
+
+// eventID builds a stable event identity from the coordinated revision.
+func eventID(key revisionKey, revision int64) string {
+	return string(key.domain) + ":" + string(key.scope) + ":" + strconv.FormatInt(revision, 10)
 }
 
 // resolveKey validates one domain/scope pair and returns the normalized key.
@@ -333,6 +390,17 @@ func (s *serviceImpl) topologySnapshot() Topology {
 	topology := s.topology
 	s.topologyMu.RUnlock()
 	return topology
+}
+
+// coordinationSnapshot returns the active distributed coordination service.
+func (s *serviceImpl) coordinationSnapshot() coordination.Service {
+	if s == nil {
+		return nil
+	}
+	s.coordMu.RLock()
+	coordinationSvc := s.coord
+	s.coordMu.RUnlock()
+	return coordinationSvc
 }
 
 // recordSuccess updates local observable state after one successful sync.
@@ -420,7 +488,11 @@ func (s *serviceImpl) storeObservedRevision(key revisionKey, revision int64) {
 }
 
 // snapshotItem builds one detached observable snapshot row.
-func (s *serviceImpl) snapshotItem(key revisionKey, sharedRevision int64) SnapshotItem {
+func (s *serviceImpl) snapshotItem(
+	key revisionKey,
+	sharedRevision int64,
+	healthSnapshot coordination.HealthSnapshot,
+) SnapshotItem {
 	s.mu.RLock()
 	status := s.status[key]
 	var localStatus coordinationStatus
@@ -456,18 +528,35 @@ func (s *serviceImpl) snapshotItem(key revisionKey, sharedRevision int64) Snapsh
 		localStatus.localRevision = sharedRevision
 	}
 	return SnapshotItem{
-		Domain:           key.domain,
-		Scope:            key.scope,
-		AuthoritySource:  spec.AuthoritySource,
-		ConsistencyModel: spec.ConsistencyModel,
-		MaxStale:         spec.MaxStale,
-		FailureStrategy:  spec.FailureStrategy,
-		LocalRevision:    localStatus.localRevision,
-		SharedRevision:   maxInt64(sharedRevision, localStatus.sharedRevision),
-		LastSyncedAt:     localStatus.lastSyncedAt,
-		RecentError:      localStatus.recentError,
-		StaleSeconds:     staleSeconds,
+		Domain:                 key.domain,
+		Scope:                  key.scope,
+		AuthoritySource:        spec.AuthoritySource,
+		ConsistencyModel:       spec.ConsistencyModel,
+		MaxStale:               spec.MaxStale,
+		FailureStrategy:        spec.FailureStrategy,
+		LocalRevision:          localStatus.localRevision,
+		SharedRevision:         maxInt64(sharedRevision, localStatus.sharedRevision),
+		LastSyncedAt:           localStatus.lastSyncedAt,
+		Backend:                healthSnapshot.Backend,
+		CoordinationHealthy:    healthSnapshot.Healthy,
+		EventSubscriberRunning: healthSnapshot.SubscriberRunning,
+		LastEventReceivedAt:    healthSnapshot.LastEventReceivedAt,
+		RecentError:            localStatus.recentError,
+		StaleSeconds:           staleSeconds,
 	}
+}
+
+// coordinationHealthSnapshot returns active backend diagnostics when clustered
+// cache coordination is using a shared coordination service.
+func (s *serviceImpl) coordinationHealthSnapshot(ctx context.Context) coordination.HealthSnapshot {
+	if !s.clusterEnabled() {
+		return coordination.HealthSnapshot{}
+	}
+	coordinationSvc := s.coordinationSnapshot()
+	if coordinationSvc == nil || coordinationSvc.Health() == nil {
+		return coordination.HealthSnapshot{}
+	}
+	return coordinationSvc.Health().Snapshot(ctx)
 }
 
 // domainSpec returns the configured domain contract or the default contract for

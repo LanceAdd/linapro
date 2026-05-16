@@ -14,8 +14,10 @@ type SysPluginState struct {
 	g.Meta     `orm:"table:sys_plugin_state, do:true"`
 	Id         any         // Primary key ID
 	PluginId   any         // Plugin unique identifier (kebab-case)
+	TenantId   any         // Plugin state tenant ID, 0 means platform/global state
 	StateKey   any         // State key
 	StateValue any         // State value with JSON support
+	Enabled    any         // Whether the plugin is enabled for the tenant
 	CreatedAt  *gtime.Time // Creation time
 	UpdatedAt  *gtime.Time // Update time
 }

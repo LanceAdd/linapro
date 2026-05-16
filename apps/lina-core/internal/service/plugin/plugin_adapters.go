@@ -4,6 +4,7 @@ package plugin
 
 import (
 	"context"
+	"time"
 
 	"lina-core/internal/service/bizctx"
 	configsvc "lina-core/internal/service/config"
@@ -41,6 +42,11 @@ func (a *jwtConfigAdapter) GetJwtSecret(ctx context.Context) string {
 	return a.svc.GetJwtSecret(ctx)
 }
 
+// GetSessionTimeout returns the runtime-effective session timeout.
+func (a *jwtConfigAdapter) GetSessionTimeout(ctx context.Context) (time.Duration, error) {
+	return a.svc.GetSessionTimeout(ctx)
+}
+
 // uploadSizeAdapter adapts configsvc.Service to runtime.UploadSizeProvider.
 type uploadSizeAdapter struct{ svc configsvc.Service }
 
@@ -55,6 +61,11 @@ type userCtxAdapter struct{ svc bizctx.Service }
 // SetUser injects authenticated user identity into the request context.
 func (a *userCtxAdapter) SetUser(ctx context.Context, tokenID string, userID int, username string, status int) {
 	a.svc.SetUser(ctx, tokenID, userID, username, status)
+}
+
+// SetTenant injects the resolved tenant into the request context.
+func (a *userCtxAdapter) SetTenant(ctx context.Context, tenantID int) {
+	a.svc.SetTenant(ctx, tenantID)
 }
 
 // SetUserAccess injects cached access-snapshot fields into the request context.

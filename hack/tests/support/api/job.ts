@@ -7,6 +7,9 @@ import {
 
 import { config } from "../../fixtures/config";
 
+export { playwrightRequest };
+export type { APIRequestContext, APIResponse };
+
 const apiBaseURL =
   process.env.E2E_API_BASE_URL ??
   new URL("/api/v1/", config.baseURL).toString();
@@ -87,16 +90,22 @@ export type PluginItem = {
   type: string;
   installed: number;
   enabled: number;
+  supportsMultiTenant?: boolean;
+  autoEnableForNewTenants?: boolean;
+  installMode?: string;
+  scopeNature?: string;
 };
 
 export type MenuNode = {
   id: number;
   name: string;
   perms: string;
+  type?: string;
   children?: MenuNode[];
 };
 
 export type AccessibleMenuNode = {
+  component?: string;
   name?: string;
   path?: string;
   meta?: {

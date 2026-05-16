@@ -32,8 +32,8 @@ Teams skip the infrastructure bootstrapping phase and put AI to work on real bus
 
 `LinaPro` is designed for individual developers, engineering teams, and enterprises that need:
 
-- **AI-native R&D workflow**: The built-in `OpenSpec` specification-driven workflow puts AI in charge of analysis, design, and implementation. Every change is anchored to incremental specs and mandatory E2E tests, so your team stays focused on direction rather than execution details.
-- **A rich AI skill ecosystem**: Over a dozen built-in AI skills cover the entire development lifecycle — backend development, frontend design, test writing, code review, performance auditing, version upgrades, and more. These skills are embedded directly in the framework's AI collaboration conventions, so AI automatically applies the right expertise in each context without requiring you to re-explain project rules in every session.
+- **AI-native R&D workflow**: `OpenSpec` is an optional but recommended dependency for specification-driven delivery. `LinaPro` provides first-class conventions, prompts, skills, and repository structure for it, so AI can lead analysis, design, and implementation while your team stays focused on direction rather than execution details.
+- **A rich AI skill ecosystem**: Over a dozen built-in AI skills cover the entire development lifecycle — backend development, frontend design, test writing, code review, performance auditing, and more. These skills are embedded directly in the framework's AI collaboration conventions, so AI automatically applies the right expertise in each context without requiring you to re-explain project rules in every session.
 - **Fast business development**: A batteries-included management workspace and a rich set of built-in modules dramatically shorten the path from zero to production.
 - **Integrated full-stack design**: Frontend and backend are designed as a unified whole — API contracts, permission models, and design conventions are fully aligned, so there's no manual integration overhead.
 - **Complete API documentation**: All host and plugin API endpoints are automatically aggregated into a single browsable and debuggable doc site.
@@ -45,7 +45,7 @@ Teams skip the infrastructure bootstrapping phase and put AI to work on real bus
 
 ```mermaid
 graph TB
-    subgraph Workflow["AI R&D Workflow  openspec/"]
+    subgraph Workflow["Optional AI R&D Workflow  openspec/"]
         direction LR
         Explore["🔍 Explore"] --> Propose["📋 Propose"] --> Implement["⚙️ Implement"] --> Review["🔎 Review"] --> Archive["📦 Archive"]
     end
@@ -87,16 +87,16 @@ graph TB
 
 ## AI-Native R&D Workflow
 
-`LinaPro` ships with `OpenSpec`, a specification-driven workflow that closes the loop from requirement to delivery:
+`LinaPro` has first-class support for `OpenSpec`, an optional but recommended specification-driven workflow that closes the loop from requirement to delivery:
 
-- Every iteration moves through a five-stage cycle — Explore → Propose → Implement → Review → Archive
-- Each change is anchored to incremental specification files and mandatory E2E tests, preventing architectural drift and coverage gaps
-- AI always builds forward from a verified foundation rather than generating code in a vacuum
+- Projects can run without `OpenSpec`; adopting it enables a five-stage cycle — Explore → Propose → Implement → Review → Archive
+- Changes can be anchored to incremental specification files and matching automated tests, preventing architectural drift and coverage gaps without making `OpenSpec` a runtime requirement
+- AI can build forward from a verified foundation rather than generating code in a vacuum
 - Developers own direction and key decisions; AI handles analysis, design, implementation, and testing within the constraints of the established specs
 
 ## A Rich AI Skill Ecosystem
 
-`LinaPro` ships with over a dozen built-in AI skills covering the full development lifecycle — backend development, frontend design, test assurance, code review, performance auditing, version management, and more. These skills are embedded as domain knowledge directly in the framework's AI collaboration conventions. No separate installation is needed; AI tooling activates the relevant skill automatically when working in each context, ensuring that AI makes framework-aware decisions at every step without requiring repeated re-explanation of project rules in each session.
+`LinaPro` ships with over a dozen built-in AI skills covering the full development lifecycle — backend development, frontend design, test assurance, code review, performance auditing, and more. These skills are embedded as domain knowledge directly in the framework's AI collaboration conventions. No separate installation is needed; AI tooling activates the relevant skill automatically when working in each context, ensuring that AI makes framework-aware decisions at every step without requiring repeated re-explanation of project rules in each session.
 
 ## Decoupled Host and Workspace
 
@@ -125,6 +125,23 @@ Plugins are the primary extension point in `LinaPro`. Each plugin is a self-cont
 - Plugins run in isolated sandboxes with namespaced database and filesystem access, so plugins cannot interfere with each other
 - Each plugin independently declares its own API routes, business logic, database schema, frontend pages, and menu entries — fully self-contained with zero host intrusion
 
+## Official Plugin Workspace
+
+The official source plugins live in a separate repository and are mounted into this host at `apps/lina-plugins` from `https://github.com/linaproai/official-plugins.git`.
+
+- Initialize it after cloning with `git submodule update --init --recursive`
+- Host-only commands work without the submodule
+- `make dev`, `make build`, `make image`, and `make image.build` auto-enable plugin-full mode when `apps/lina-plugins` contains plugin manifests; pass `plugins=0` to force host-only mode
+- Plugin-full mode generates or refreshes the ignored `temp/go.work.plugins` workspace from the host-only root `go.work`, then uses it via `GOWORK`
+- Plugin-only tests and plugin E2E require the submodule to be initialized
+
+User projects that want to maintain plugins directly in their own repository should convert `apps/lina-plugins` into a normal directory instead of keeping the official submodule. Configure plugin sources in `hack/config.yaml` under `plugins.sources`, then use:
+
+- `make plugins.init` to detach `apps/lina-plugins` from submodule metadata while preserving existing plugin code
+- `make plugins.install` to install configured plugins into `apps/lina-plugins/<plugin-id>`
+- `make plugins.update` to update configured plugins, with local changes blocked unless `force=1` is passed
+- `make plugins.status` to inspect workspace type, plugin versions, local changes, lock state, and remote update status
+
 ## Enterprise-Grade Security
 
 - JWT authentication paired with a declarative RBAC permission system — permissions are declared as struct tags in the API definition layer, making the permission model inherently visible and auditable
@@ -150,6 +167,23 @@ Plugins are the primary extension point in `LinaPro`. Each plugin is a self-cont
 - Supports both single-node and distributed cluster deployments — horizontal scaling requires zero changes to business code
 - Built-in distributed locking and key-value caching, with core components that are natively cluster-aware
 - The job scheduling subsystem is distribution-aware, automatically preventing duplicate execution across cluster nodes
+- Single-node mode does not require `Redis`; when `cluster.enabled=true`, the host requires `cluster.coordination: redis` and a reachable `cluster.redis` endpoint before it starts. The current coordination backend is `Redis`, with the configuration shape intentionally kept open for future backends.
+- Optional Redis integration tests are disabled by default. Set `LINA_TEST_REDIS_ADDR`, for example `LINA_TEST_REDIS_ADDR=127.0.0.1:6379`, to enable tests that require a real Redis instance.
+
+## Multi-Tenant Foundation
+
+`LinaPro` is being extended with a pool-based multi-tenant model that keeps the single-tenant experience available by default. When the `multi-tenant` plugin is not installed or enabled, host and plugin data use `tenant_id = 0`, which represents the `PLATFORM` tenant.
+
+When the `multi-tenant` plugin is enabled:
+
+- Tenant identity is resolved by the built-in chain: `override`, `jwt`, `session`, `header`, `subdomain`, and `default`; supported runtime policy changes are stored by the plugin, not by the host config template.
+- The isolation model is code-owned and currently fixed to `pool`.
+- User-to-tenant cardinality is code-owned and defaults to `multi`, allowing one user to belong to multiple tenants.
+- Plugins declare `scope_nature`, `supports_multi_tenant`, and `default_install_mode` in `plugin.yaml`; new-tenant auto-enable policy is managed by the platform registry, not by the manifest.
+- `platform_only` plugins are governed globally, while `tenant_aware` plugins can be enabled globally or per tenant.
+- LifecycleGuard hooks may veto plugin disable or uninstall operations, and `plugin.allowForceUninstall` controls whether platform administrators can force an audited override.
+
+Typical internal `BU` usage starts with the built-in `multi` cardinality, `prompt` ambiguity handling, and tenant-scoped enablement for audit or content plugins. This iteration uses the pool model only; `rootDomain` is reserved for a later settings release and is not configurable yet. Schema-per-tenant, database-per-tenant, quotas, billing, and branding customization are reserved for future work.
 
 
 # Tech Stack
@@ -193,9 +227,34 @@ corepack enable
 cd apps/lina-vben
 pnpm install
 cd ../..
+cd hack/tools/linactl
+go run . init confirm=init
+go run . mock confirm=mock
+go run . dev
+```
+
+Linux and macOS users can keep using the compatibility `Makefile` entrypoint:
+
+```bash
 make init confirm=init
 make mock confirm=mock
 make dev
+```
+
+Windows users can use the cross-platform Go entrypoint above. The repository also provides a thin `make.cmd` wrapper for `cmd.exe`; because `cmd.exe` resolves executable file extensions in the current directory, the `.cmd` suffix can be omitted and the command can be written as `make`:
+
+```cmd
+make init confirm=init
+make mock confirm=mock
+make dev
+```
+
+In PowerShell, call the wrapper with the current-directory prefix. On default Windows environments, the `.cmd` suffix can also be omitted as `.\make`. Use `.\make.cmd` when you want to avoid ambiguity with another installed `make` command:
+
+```powershell
+.\make init confirm=init
+.\make mock confirm=mock
+.\make dev
 ```
 
 The default backend link is:
@@ -206,9 +265,9 @@ database:
     link: "pgsql:postgres:postgres@tcp(127.0.0.1:5432)/linapro?sslmode=disable"
 ```
 
-`make init` is an operations bootstrap command. It uses the configured database account and requires permission to connect to the system database, create and drop the target database, terminate target-database connections, create tables and indexes, write comments, and insert seed data. If those permissions are missing, initialization fails instead of falling back to a lower-privilege runtime mode.
+`linactl init` and `make init` are operations bootstrap commands. They use the configured database account and require permission to connect to the system database, create and drop the target database, terminate target-database connections, create tables and indexes, write comments, and insert seed data. If those permissions are missing, initialization fails instead of falling back to a lower-privilege runtime mode.
 
-For external hosted `PostgreSQL`, such as `RDS` or `Aliyun PolarDB`, point `database.default.link` at the provider host and port. Use an initialization account with the permissions above for `make init`, then run the service with the same configured database unless your deployment process replaces the config with a runtime account after initialization.
+For external hosted `PostgreSQL`, such as `RDS` or `Aliyun PolarDB`, point `database.default.link` at the provider host and port. Use an initialization account with the permissions above for `linactl init` or `make init`, then run the service with the same configured database unless your deployment process replaces the config with a runtime account after initialization.
 
 For a single-node development demo, switch the link to `SQLite`:
 

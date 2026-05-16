@@ -12,9 +12,11 @@ import (
 	"testing"
 	"testing/fstest"
 
-	_ "lina-core/pkg/dbdriver"
 	"github.com/gogf/gf/v2/os/gfile"
+	_ "lina-core/pkg/dbdriver"
 
+	"lina-core/internal/dao"
+	"lina-core/internal/model/do"
 	menusvc "lina-core/internal/service/menu"
 	"lina-core/internal/service/plugin/internal/catalog"
 	"lina-core/internal/service/plugin/internal/runtime"
@@ -45,6 +47,158 @@ func TestValidatePluginManifestAcceptsMinimalSourcePlugin(t *testing.T) {
 	}
 }
 
+// TestValidatePluginManifestNormalizesDependencyDefaults verifies dependency
+// declarations are accepted and receive deterministic defaults.
+func TestValidatePluginManifestNormalizesDependencyDefaults(t *testing.T) {
+	svcs := testutil.NewServices()
+	pluginDir := testutil.CreateTestPluginDir(t, "plugin-dependency-valid")
+	manifestFile := filepath.Join(pluginDir, "plugin.yaml")
+
+	manifest := &catalog.Manifest{
+		ID:      "plugin-dependency-valid",
+		Name:    "Plugin Dependency Valid",
+		Version: "0.1.0",
+		Type:    catalog.TypeSource.String(),
+		Dependencies: &catalog.DependencySpec{
+			Framework: &catalog.FrameworkDependencySpec{Version: " >=0.1.0 <1.0.0 "},
+			Plugins: []*catalog.PluginDependencySpec{
+				{
+					ID:      " multi-tenant ",
+					Version: " >=0.1.0 ",
+				},
+				{
+					ID:       "org-center",
+					Version:  ">=0.1.0",
+					Required: boolPtr(false),
+					Install:  " auto ",
+				},
+			},
+		},
+	}
+
+	if err := svcs.Catalog.ValidateManifest(manifest, manifestFile); err != nil {
+		t.Fatalf("expected dependency manifest to be valid, got error: %v", err)
+	}
+	if manifest.Dependencies.Framework.Version != ">=0.1.0 <1.0.0" {
+		t.Fatalf("expected framework range to be trimmed, got %q", manifest.Dependencies.Framework.Version)
+	}
+	firstDependency := manifest.Dependencies.Plugins[0]
+	if firstDependency.ID != "multi-tenant" {
+		t.Fatalf("expected dependency ID to be trimmed, got %q", firstDependency.ID)
+	}
+	if firstDependency.Required == nil || !*firstDependency.Required {
+		t.Fatalf("expected required default true, got %#v", firstDependency.Required)
+	}
+	if firstDependency.Install != catalog.DependencyInstallModeManual.String() {
+		t.Fatalf("expected install default manual, got %q", firstDependency.Install)
+	}
+	if manifest.Dependencies.Plugins[1].Install != catalog.DependencyInstallModeAuto.String() {
+		t.Fatalf("expected explicit auto install mode, got %q", manifest.Dependencies.Plugins[1].Install)
+	}
+}
+
+// TestValidatePluginManifestRejectsInvalidDependencies verifies dependency
+// structural errors are caught during manifest validation.
+func TestValidatePluginManifestRejectsInvalidDependencies(t *testing.T) {
+	tests := []struct {
+		name         string
+		dependencies *catalog.DependencySpec
+		want         string
+	}{
+		{
+			name: "empty dependency id",
+			dependencies: &catalog.DependencySpec{
+				Plugins: []*catalog.PluginDependencySpec{{ID: ""}},
+			},
+			want: "missing id",
+		},
+		{
+			name: "invalid dependency id",
+			dependencies: &catalog.DependencySpec{
+				Plugins: []*catalog.PluginDependencySpec{{ID: "Bad_ID"}},
+			},
+			want: "kebab-case",
+		},
+		{
+			name: "self dependency",
+			dependencies: &catalog.DependencySpec{
+				Plugins: []*catalog.PluginDependencySpec{{ID: "plugin-dependency-invalid"}},
+			},
+			want: "cannot depend on itself",
+		},
+		{
+			name: "duplicate dependency",
+			dependencies: &catalog.DependencySpec{
+				Plugins: []*catalog.PluginDependencySpec{
+					{ID: "multi-tenant"},
+					{ID: "multi-tenant"},
+				},
+			},
+			want: "duplicate",
+		},
+		{
+			name: "invalid dependency version range",
+			dependencies: &catalog.DependencySpec{
+				Plugins: []*catalog.PluginDependencySpec{{ID: "multi-tenant", Version: ">= v0.1.0"}},
+			},
+			want: "version",
+		},
+		{
+			name: "invalid install mode",
+			dependencies: &catalog.DependencySpec{
+				Plugins: []*catalog.PluginDependencySpec{{ID: "multi-tenant", Install: "sometimes"}},
+			},
+			want: "manual/auto",
+		},
+		{
+			name: "invalid framework version range",
+			dependencies: &catalog.DependencySpec{
+				Framework: &catalog.FrameworkDependencySpec{Version: "0.1"},
+			},
+			want: "framework",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svcs := testutil.NewServices()
+			pluginDir := testutil.CreateTestPluginDir(t, "plugin-dependency-invalid")
+			manifest := &catalog.Manifest{
+				ID:           "plugin-dependency-invalid",
+				Name:         "Plugin Dependency Invalid",
+				Version:      "0.1.0",
+				Type:         catalog.TypeSource.String(),
+				Dependencies: tt.dependencies,
+			}
+
+			err := svcs.Catalog.ValidateManifest(manifest, filepath.Join(pluginDir, "plugin.yaml"))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected dependency validation error containing %q, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
+// TestMatchesSemanticVersionRange verifies dependency version constraints use
+// deterministic semver comparison semantics.
+func TestMatchesSemanticVersionRange(t *testing.T) {
+	matches, err := catalog.MatchesSemanticVersionRange("v0.6.1", ">=0.6.0 <0.7.0")
+	if err != nil {
+		t.Fatalf("expected range match to parse, got %v", err)
+	}
+	if !matches {
+		t.Fatal("expected v0.6.1 to satisfy >=0.6.0 <0.7.0")
+	}
+
+	matches, err = catalog.MatchesSemanticVersionRange("v0.7.0", ">=0.6.0 <0.7.0")
+	if err != nil {
+		t.Fatalf("expected range mismatch to parse, got %v", err)
+	}
+	if matches {
+		t.Fatal("expected v0.7.0 not to satisfy >=0.6.0 <0.7.0")
+	}
+}
+
 // TestValidatePluginManifestRejectsMissingBackendEntryForSourcePlugin verifies
 // that source plugins must still provide backend/plugin.go.
 func TestValidatePluginManifestRejectsMissingBackendEntryForSourcePlugin(t *testing.T) {
@@ -68,10 +222,68 @@ func TestValidatePluginManifestRejectsMissingBackendEntryForSourcePlugin(t *test
 	}
 }
 
+// TestScanPluginManifestsReportsInvalidEmbeddedSourceManifest verifies an
+// invalid registered source plugin remains a hard scan failure.
+func TestScanPluginManifestsReportsInvalidEmbeddedSourceManifest(t *testing.T) {
+	svcs := testutil.NewServices()
+
+	const pluginID = "plugin-invalid-embedded"
+	sourcePlugin := pluginhost.NewSourcePlugin(pluginID)
+	sourcePlugin.Assets().UseEmbeddedFiles(fstest.MapFS{
+		"plugin.yaml": &fstest.MapFile{Data: []byte("id: plugin-invalid-embedded\nname: Invalid Plugin\nversion: invalid\ntype: source\nscope_nature: tenant_aware\nsupports_multi_tenant: true\ndefault_install_mode: tenant_scoped\n")},
+	})
+	cleanup, err := pluginhost.RegisterSourcePluginForTest(sourcePlugin)
+	if err != nil {
+		t.Fatalf("failed to register invalid source plugin fixture: %v", err)
+	}
+	t.Cleanup(cleanup)
+
+	_, scanErr := svcs.Catalog.ScanManifests()
+	if scanErr == nil || !strings.Contains(scanErr.Error(), "version") {
+		t.Fatalf("expected invalid embedded source manifest error, got: %v", scanErr)
+	}
+}
+
+// TestValidateManifestUsesManifestRootDir verifies that source manifest
+// validation resolves SQL assets from the manifest root instead of the current
+// working directory.
+func TestValidateManifestUsesManifestRootDir(t *testing.T) {
+	svcs := testutil.NewServices()
+	pluginDir := testutil.CreateTestPluginDir(t, "plugin-manifest-rootdir")
+	manifestPath := filepath.Join(pluginDir, "plugin.yaml")
+
+	manifest := &catalog.Manifest{
+		ID:      "plugin-manifest-rootdir",
+		Name:    "Manifest RootDir Plugin",
+		Version: "0.1.0",
+		Type:    catalog.TypeSource.String(),
+	}
+	if err := os.Remove(filepath.Join(pluginDir, "manifest", "sql", "001-plugin-manifest-rootdir.sql")); err != nil {
+		t.Fatalf("failed to remove plugin install sql: %v", err)
+	}
+	if err := os.Remove(filepath.Join(pluginDir, "manifest", "sql", "uninstall", "001-plugin-manifest-rootdir.sql")); err != nil {
+		t.Fatalf("failed to remove plugin uninstall sql: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(pluginDir, "manifest", "sql"), 0o755); err != nil {
+		t.Fatalf("failed to recreate sql dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "manifest", "sql", "001-plugin-manifest-rootdir.sql"), []byte("SELECT 1;\n"), 0o644); err != nil {
+		t.Fatalf("failed to write plugin install sql: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "manifest", "sql", "uninstall", "001-plugin-manifest-rootdir.sql"), []byte("SELECT 1;\n"), 0o644); err != nil {
+		t.Fatalf("failed to write plugin uninstall sql: %v", err)
+	}
+
+	if err := svcs.Catalog.ValidateManifest(manifest, manifestPath); err != nil {
+		t.Fatalf("expected manifest validation to use plugin root dir, got error: %v", err)
+	}
+}
+
 // TestValidatePluginManifestAcceptsRuntimePluginWithEmbeddedWasmMetadata verifies
 // that dynamic plugins validate from embedded runtime artifact metadata alone.
 func TestValidatePluginManifestAcceptsRuntimePluginWithEmbeddedWasmMetadata(t *testing.T) {
 	svcs := testutil.NewServices()
+	supportsMultiTenant := true
 	pluginDir := testutil.CreateTestRuntimePluginDir(
 		t,
 		"plugin-dynamic-valid",
@@ -87,11 +299,14 @@ func TestValidatePluginManifestAcceptsRuntimePluginWithEmbeddedWasmMetadata(t *t
 
 	manifestFile := filepath.Join(pluginDir, "plugin.yaml")
 	manifest := &catalog.Manifest{
-		ID:          "plugin-dynamic-valid",
-		Name:        "Runtime Validation Plugin",
-		Version:     "v0.2.0",
-		Type:        catalog.TypeDynamic.String(),
-		Description: "A valid dynamic plugin manifest used by unit tests.",
+		ID:                  "plugin-dynamic-valid",
+		Name:                "Runtime Validation Plugin",
+		Version:             "v0.2.0",
+		Type:                catalog.TypeDynamic.String(),
+		ScopeNature:         catalog.ScopeNatureTenantAware.String(),
+		SupportsMultiTenant: &supportsMultiTenant,
+		DefaultInstallMode:  catalog.InstallModeTenantScoped.String(),
+		Description:         "A valid dynamic plugin manifest used by unit tests.",
 	}
 
 	if err := svcs.Catalog.ValidateManifest(manifest, manifestFile); err != nil {
@@ -105,6 +320,12 @@ func TestValidatePluginManifestAcceptsRuntimePluginWithEmbeddedWasmMetadata(t *t
 	}
 	if manifest.RuntimeArtifact.ABIVersion != pluginbridge.SupportedABIVersion {
 		t.Fatalf("expected ABI version %s, got %s", pluginbridge.SupportedABIVersion, manifest.RuntimeArtifact.ABIVersion)
+	}
+	if !manifest.SupportsTenantGovernance() {
+		t.Fatalf("expected dynamic manifest to keep supports_multi_tenant=true")
+	}
+	if manifest.ScopeNature != catalog.ScopeNatureTenantAware.String() || manifest.DefaultInstallMode != catalog.InstallModeTenantScoped.String() {
+		t.Fatalf("unexpected dynamic tenant governance: scope=%s mode=%s", manifest.ScopeNature, manifest.DefaultInstallMode)
 	}
 }
 
@@ -208,31 +429,14 @@ func TestValidatePluginManifestRejectsMismatchedRuntimeWasmManifest(t *testing.T
 	}
 }
 
-// TestScanPluginManifestsRejectsDuplicatePluginIDs verifies that source-plugin
-// discovery fails fast when duplicate plugin IDs are found.
+// TestScanPluginManifestsRejectsDuplicatePluginIDs verifies that discovery
+// fails fast when a registered source plugin and runtime artifact share an ID.
 func TestScanPluginManifestsRejectsDuplicatePluginIDs(t *testing.T) {
 	svcs := testutil.NewServices()
-	pluginDir := testutil.CreateTestPluginDir(t, "plugin-duplicate-id")
-	peerPluginDir := testutil.CreateTestPluginDir(t, "plugin-duplicate-id-peer")
+	pluginID := "plugin-duplicate-id"
 
-	manifestPath := filepath.Join(pluginDir, "plugin.yaml")
-	manifestContent := strings.Join([]string{
-		"id: plugin-duplicate-id-shared",
-		"name: Duplicate Plugin",
-		"version: 0.1.0",
-		"type: source",
-		"description: Duplicate id test plugin",
-		"author: test-suite",
-		"license: Apache-2.0",
-		"",
-	}, "\n")
-	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0o644); err != nil {
-		t.Fatalf("failed to write duplicate manifest: %v", err)
-	}
-	peerManifestPath := filepath.Join(peerPluginDir, "plugin.yaml")
-	if err := os.WriteFile(peerManifestPath, []byte(manifestContent), 0o644); err != nil {
-		t.Fatalf("failed to write duplicate peer manifest: %v", err)
-	}
+	testutil.CreateTestPluginDir(t, pluginID)
+	testutil.CreateTestRuntimeStorageArtifact(t, pluginID, "Duplicate Runtime Plugin", "v0.1.0", nil, nil)
 
 	_, err := svcs.Catalog.ScanManifests()
 	if err == nil || !strings.Contains(err.Error(), "plugin ID is duplicated") {
@@ -636,7 +840,7 @@ func TestScanEmbeddedSourcePluginManifestsUsesPluginEmbeddedFiles(t *testing.T) 
 	const pluginID = "plugin-embedded-manifest"
 	sourcePlugin := pluginhost.NewSourcePlugin(pluginID)
 	sourcePlugin.Assets().UseEmbeddedFiles(fstest.MapFS{
-		"plugin.yaml":                                &fstest.MapFile{Data: []byte("id: plugin-embedded-manifest\nname: Embedded Manifest Plugin\nversion: 0.1.0\ntype: source\n")},
+		"plugin.yaml":                                &fstest.MapFile{Data: []byte("id: plugin-embedded-manifest\nname: Embedded Manifest Plugin\nversion: 0.1.0\ntype: source\nscope_nature: tenant_aware\nsupports_multi_tenant: false\ndefault_install_mode: global\n")},
 		"frontend/pages/main-entry.vue":              &fstest.MapFile{Data: []byte("<template><div /></template>\n")},
 		"frontend/slots/layout.header.after/tip.vue": &fstest.MapFile{Data: []byte("<template><div /></template>\n")},
 		"manifest/sql/001-plugin-embedded-manifest.sql": &fstest.MapFile{
@@ -687,7 +891,7 @@ func TestResolvePluginSQLAssetsUsesEmbeddedSourcePluginFiles(t *testing.T) {
 		SourcePlugin: func() pluginhost.SourcePluginDefinition {
 			sourcePlugin := pluginhost.NewSourcePlugin("plugin-embedded-sql-assets")
 			sourcePlugin.Assets().UseEmbeddedFiles(fstest.MapFS{
-				"plugin.yaml": &fstest.MapFile{Data: []byte("id: plugin-embedded-sql-assets\nname: Embedded SQL Assets Plugin\nversion: 0.1.0\ntype: source\n")},
+				"plugin.yaml": &fstest.MapFile{Data: []byte("id: plugin-embedded-sql-assets\nname: Embedded SQL Assets Plugin\nversion: 0.1.0\ntype: source\nscope_nature: tenant_aware\nsupports_multi_tenant: false\ndefault_install_mode: global\n")},
 				"manifest/sql/001-plugin-embedded-sql-assets.sql": &fstest.MapFile{
 					Data: []byte("SELECT 1;\n"),
 				},
@@ -717,6 +921,71 @@ func TestResolvePluginSQLAssetsUsesEmbeddedSourcePluginFiles(t *testing.T) {
 	}
 	if len(uninstallAssets) != 1 || uninstallAssets[0].Content != "SELECT 2;" {
 		t.Fatalf("unexpected embedded uninstall assets: %#v", uninstallAssets)
+	}
+}
+
+// TestGetRegistryReleaseFallsBackWhenReleasePointerIsDangling verifies that
+// catalog reads tolerate registry rows whose release_id no longer points to an
+// existing release row.
+func TestGetRegistryReleaseFallsBackWhenReleasePointerIsDangling(t *testing.T) {
+	var (
+		ctx      = context.Background()
+		svcs     = testutil.NewServices()
+		pluginID = "plugin-dangling-release-pointer"
+		version  = "9.9.9"
+	)
+
+	testutil.CleanupPluginGovernanceRowsHard(t, ctx, pluginID)
+	t.Cleanup(func() {
+		testutil.CleanupPluginGovernanceRowsHard(t, ctx, pluginID)
+	})
+
+	if _, err := dao.SysPlugin.Ctx(ctx).Data(do.SysPlugin{
+		PluginId:     pluginID,
+		Name:         "Dangling Release Pointer Plugin",
+		Version:      version,
+		Type:         catalog.TypeDynamic.String(),
+		Installed:    catalog.InstalledYes,
+		Status:       catalog.StatusEnabled,
+		DesiredState: catalog.LifecycleStateRuntimeEnabled.String(),
+		CurrentState: catalog.LifecycleStateRuntimeEnabled.String(),
+		Generation:   int64(1),
+		ReleaseId:    987654321,
+		ScopeNature:  catalog.ScopeNatureTenantAware.String(),
+		InstallMode:  catalog.InstallModeTenantScoped.String(),
+		ManifestPath: "runtime/plugin-dangling-release-pointer/plugin.yaml",
+		Checksum:     "dangling-release-pointer",
+		Remark:       "Dangling release pointer test plugin",
+	}).InsertAndGetId(); err != nil {
+		t.Fatalf("failed to insert plugin registry row: %v", err)
+	}
+	insertID, err := dao.SysPluginRelease.Ctx(ctx).Data(do.SysPluginRelease{
+		PluginId:       pluginID,
+		ReleaseVersion: version,
+		Type:           catalog.TypeDynamic.String(),
+		RuntimeKind:    pluginbridge.RuntimeKindWasm,
+		Status:         catalog.ReleaseStatusActive.String(),
+		ManifestPath:   "runtime/plugin-dangling-release-pointer/plugin.yaml",
+		PackagePath:    "runtime/plugin-dangling-release-pointer.wasm",
+		Checksum:       "dangling-release-pointer",
+	}).InsertAndGetId()
+	if err != nil {
+		t.Fatalf("failed to insert fallback plugin release row: %v", err)
+	}
+
+	registry, err := svcs.Catalog.GetRegistry(ctx, pluginID)
+	if err != nil {
+		t.Fatalf("expected registry lookup to succeed, got error: %v", err)
+	}
+	release, err := svcs.Catalog.GetRegistryRelease(ctx, registry)
+	if err != nil {
+		t.Fatalf("expected dangling release pointer to fall back to plugin version, got error: %v", err)
+	}
+	if release == nil {
+		t.Fatalf("expected fallback release to be returned")
+	}
+	if release.Id != int(insertID) {
+		t.Fatalf("expected fallback release id %d, got %d", insertID, release.Id)
 	}
 }
 
@@ -905,4 +1174,117 @@ func TestValidateManifestMenusAcceptsOfficialPluginStableParent(t *testing.T) {
 	if err := catalog.ValidateManifestMenus(manifest); err != nil {
 		t.Fatalf("expected official plugin manifest menus to be valid, got: %v", err)
 	}
+}
+
+// TestValidateManifestMenusRejectsMultiTenantTenantCatalog verifies the
+// multi-tenant source plugin no longer declares a dedicated tenant workbench.
+func TestValidateManifestMenusRejectsMultiTenantTenantCatalog(t *testing.T) {
+	manifest := &catalog.Manifest{
+		ID: menusvc.MultiTenant,
+		Menus: []*catalog.MenuSpec{
+			{
+				Key:       "plugin:multi-tenant:tenant:members",
+				Name:      "成员管理",
+				ParentKey: "tenant",
+				Path:      "/tenant/members",
+				Type:      catalog.MenuTypePage.String(),
+			},
+		},
+	}
+
+	err := catalog.ValidateManifestMenus(manifest)
+	if err == nil || !strings.Contains(err.Error(), "can only mount to a stable host catalog") {
+		t.Fatalf("expected tenant workbench parent validation error, got: %v", err)
+	}
+}
+
+// TestValidateManifestNormalizesTenantGovernance verifies tenant governance
+// manifest fields have deterministic normalization and platform-only constraints.
+func TestValidateManifestNormalizesTenantGovernance(t *testing.T) {
+	svcs := testutil.NewServices()
+	pluginDir := testutil.CreateTestPluginDir(t, "plugin-tenant-governance")
+	manifestFile := filepath.Join(pluginDir, "plugin.yaml")
+	supportsMultiTenant := false
+
+	manifest := &catalog.Manifest{
+		ID:                  "plugin-tenant-governance",
+		Name:                "Tenant Governance Plugin",
+		Version:             "0.1.0",
+		Type:                catalog.TypeSource.String(),
+		ScopeNature:         catalog.ScopeNaturePlatformOnly.String(),
+		SupportsMultiTenant: &supportsMultiTenant,
+		DefaultInstallMode:  catalog.InstallModeTenantScoped.String(),
+	}
+
+	if err := svcs.Catalog.ValidateManifest(manifest, manifestFile); err != nil {
+		t.Fatalf("expected manifest to validate, got %v", err)
+	}
+	if manifest.ScopeNature != catalog.ScopeNaturePlatformOnly.String() {
+		t.Fatalf("expected platform-only scope, got %s", manifest.ScopeNature)
+	}
+	if manifest.DefaultInstallMode != catalog.InstallModeGlobal.String() {
+		t.Fatalf("expected platform-only plugin to force global install mode, got %s", manifest.DefaultInstallMode)
+	}
+	if manifest.SupportsTenantGovernance() {
+		t.Fatalf("expected platform-only plugin to disable tenant governance support")
+	}
+}
+
+// TestValidateManifestRequiresMultiTenantSupportDeclaration verifies plugin
+// manifests must explicitly declare whether tenant governance is supported.
+func TestValidateManifestRequiresMultiTenantSupportDeclaration(t *testing.T) {
+	svcs := testutil.NewServices()
+	pluginDir := testutil.CreateTestPluginDir(t, "plugin-tenant-governance-missing-support")
+	manifestFile := filepath.Join(pluginDir, "plugin.yaml")
+	testutil.WriteTestFile(
+		t,
+		manifestFile,
+		"id: plugin-tenant-governance-missing-support\nname: Tenant Governance Missing Support Plugin\nversion: 0.1.0\ntype: source\nscope_nature: tenant_aware\ndefault_install_mode: tenant_scoped\n",
+	)
+
+	manifest := &catalog.Manifest{
+		ID:      "plugin-tenant-governance-missing-support",
+		Name:    "Tenant Governance Missing Support Plugin",
+		Version: "0.1.0",
+		Type:    catalog.TypeSource.String(),
+	}
+
+	err := svcs.Catalog.ValidateManifest(manifest, manifestFile)
+	if err == nil || !strings.Contains(err.Error(), "supports_multi_tenant is required") {
+		t.Fatalf("expected missing supports_multi_tenant validation error, got %v", err)
+	}
+}
+
+// TestValidateManifestForcesGlobalWhenTenantGovernanceUnsupported verifies
+// tenant-aware plugins can explicitly opt out of tenant-level governance.
+func TestValidateManifestForcesGlobalWhenTenantGovernanceUnsupported(t *testing.T) {
+	svcs := testutil.NewServices()
+	pluginDir := testutil.CreateTestPluginDir(t, "plugin-tenant-governance-unsupported")
+	manifestFile := filepath.Join(pluginDir, "plugin.yaml")
+	supportsMultiTenant := false
+
+	manifest := &catalog.Manifest{
+		ID:                  "plugin-tenant-governance-unsupported",
+		Name:                "Tenant Governance Unsupported Plugin",
+		Version:             "0.1.0",
+		Type:                catalog.TypeSource.String(),
+		ScopeNature:         catalog.ScopeNatureTenantAware.String(),
+		SupportsMultiTenant: &supportsMultiTenant,
+		DefaultInstallMode:  catalog.InstallModeTenantScoped.String(),
+	}
+
+	if err := svcs.Catalog.ValidateManifest(manifest, manifestFile); err != nil {
+		t.Fatalf("expected manifest to validate, got %v", err)
+	}
+	if manifest.DefaultInstallMode != catalog.InstallModeGlobal.String() {
+		t.Fatalf("expected unsupported tenant governance to force global install mode, got %s", manifest.DefaultInstallMode)
+	}
+	if manifest.SupportsTenantGovernance() {
+		t.Fatalf("expected explicit supports_multi_tenant=false to disable tenant governance")
+	}
+}
+
+// boolPtr returns a pointer to value for concise manifest fixtures.
+func boolPtr(value bool) *bool {
+	return &value
 }

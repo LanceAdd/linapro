@@ -11,13 +11,13 @@ import (
 	"lina-core/internal/model/entity"
 	"lina-core/internal/service/datascope"
 	"lina-core/internal/service/jobmeta"
-	"lina-core/internal/service/role"
 	"lina-core/pkg/bizerr"
 )
 
 // applyJobDataScope keeps built-in jobs visible and filters user-created jobs
 // by created_by.
 func (s *serviceImpl) applyJobDataScope(ctx context.Context, model *gdb.Model) (*gdb.Model, error) {
+	model = datascope.ApplyTenantScope(ctx, model, dao.SysJob.Table()+"."+datascope.TenantColumn)
 	scopedModel, _, err := s.currentScopeSvc().ApplyUserScopeWithBypass(
 		ctx,
 		model,
@@ -33,6 +33,7 @@ func (s *serviceImpl) applyJobDataScope(ctx context.Context, model *gdb.Model) (
 
 // applyJobLogDataScope filters logs by the visibility of their owning job.
 func (s *serviceImpl) applyJobLogDataScope(ctx context.Context, model *gdb.Model) (*gdb.Model, error) {
+	model = datascope.ApplyTenantScope(ctx, model, dao.SysJobLog.Table()+"."+datascope.TenantColumn)
 	jobCols := dao.SysJob.Columns()
 	subQuery := dao.SysJob.Ctx(ctx).
 		Fields(jobCols.Id).
@@ -104,11 +105,10 @@ func (s *serviceImpl) ensureLogsVisible(ctx context.Context, ids []int64) error 
 
 // currentScopeSvc returns the shared data-scope service for job operations.
 func (s *serviceImpl) currentScopeSvc() datascope.Service {
-	return datascope.New(datascope.Dependencies{
-		BizCtxSvc: s.bizCtxSvc,
-		RoleSvc:   role.New(nil),
-		OrgCapSvc: s.orgCapSvc,
-	})
+	if s != nil && s.scopeSvc != nil {
+		return s.scopeSvc
+	}
+	return nil
 }
 
 // mapJobDataScopeError maps shared data-scope errors to scheduled-job errors.

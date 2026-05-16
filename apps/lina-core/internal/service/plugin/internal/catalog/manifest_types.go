@@ -48,6 +48,12 @@ type Manifest struct {
 	Version string `yaml:"version"`
 	// Type is the normalized plugin type ("source" or "dynamic").
 	Type string `yaml:"type"`
+	// ScopeNature declares whether the plugin is platform-only or tenant-aware.
+	ScopeNature string `yaml:"scope_nature"`
+	// SupportsMultiTenant declares whether the plugin can participate in tenant-level governance.
+	SupportsMultiTenant *bool `yaml:"supports_multi_tenant"`
+	// DefaultInstallMode declares the tenant enablement model for tenant-aware plugins.
+	DefaultInstallMode string `yaml:"default_install_mode"`
 	// Description is an optional human-readable description.
 	Description string `yaml:"description"`
 	// Author is an optional author string.
@@ -56,6 +62,8 @@ type Manifest struct {
 	Homepage string `yaml:"homepage"`
 	// License is an optional license identifier.
 	License string `yaml:"license"`
+	// Dependencies declares host and plugin dependency constraints.
+	Dependencies *DependencySpec `yaml:"dependencies"`
 	// Menus holds manifest-declared host menu entries.
 	Menus []*MenuSpec `yaml:"menus"`
 	// ManifestPath is the filesystem path to the plugin.yaml file (source plugins).
@@ -78,6 +86,18 @@ type Manifest struct {
 	RuntimeArtifact *ArtifactSpec
 	// SourcePlugin is the embedded source-plugin registration for source plugins.
 	SourcePlugin pluginhost.SourcePluginDefinition
+}
+
+// SupportsTenantGovernance reports whether this manifest can use tenant-level
+// plugin governance. Missing legacy values fall back to the scope nature.
+func (manifest *Manifest) SupportsTenantGovernance() bool {
+	if manifest == nil {
+		return false
+	}
+	if manifest.SupportsMultiTenant != nil {
+		return *manifest.SupportsMultiTenant
+	}
+	return NormalizeScopeNature(manifest.ScopeNature) == ScopeNatureTenantAware
 }
 
 // MenuSpec defines one manifest-declared host menu entry.
@@ -255,10 +275,44 @@ type ArtifactManifest struct {
 	Version string `json:"version" yaml:"version"`
 	// Type is the normalized plugin type.
 	Type string `json:"type" yaml:"type"`
+	// ScopeNature declares whether the plugin is platform-only or tenant-aware.
+	ScopeNature string `json:"scopeNature,omitempty" yaml:"scopeNature,omitempty"`
+	// SupportsMultiTenant declares whether the plugin can participate in tenant-level governance.
+	SupportsMultiTenant *bool `json:"supportsMultiTenant,omitempty" yaml:"supportsMultiTenant,omitempty"`
+	// DefaultInstallMode declares the tenant enablement model for tenant-aware plugins.
+	DefaultInstallMode string `json:"defaultInstallMode,omitempty" yaml:"defaultInstallMode,omitempty"`
 	// Description is an optional human-readable description.
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+	// Dependencies declares host and plugin dependency constraints.
+	Dependencies *DependencySpec `json:"dependencies,omitempty" yaml:"dependencies,omitempty"`
 	// Menus holds manifest-declared host menu entries.
 	Menus []*MenuSpec `json:"menus,omitempty" yaml:"menus,omitempty"`
+}
+
+// DependencySpec defines the dependency constraints declared by one plugin.
+type DependencySpec struct {
+	// Framework declares LinaPro framework compatibility constraints.
+	Framework *FrameworkDependencySpec `json:"framework,omitempty" yaml:"framework,omitempty"`
+	// Plugins lists other plugins this plugin depends on.
+	Plugins []*PluginDependencySpec `json:"plugins,omitempty" yaml:"plugins,omitempty"`
+}
+
+// FrameworkDependencySpec declares the compatible LinaPro framework version range.
+type FrameworkDependencySpec struct {
+	// Version is the semantic version range required by this plugin.
+	Version string `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// PluginDependencySpec declares one plugin-to-plugin dependency.
+type PluginDependencySpec struct {
+	// ID is the depended-on plugin ID.
+	ID string `json:"id" yaml:"id"`
+	// Version is the semantic version range required from the dependency.
+	Version string `json:"version,omitempty" yaml:"version,omitempty"`
+	// Required reports whether this dependency blocks lifecycle operations.
+	Required *bool `json:"required,omitempty" yaml:"required,omitempty"`
+	// Install declares whether the host may install this dependency automatically.
+	Install string `json:"install,omitempty" yaml:"install,omitempty"`
 }
 
 // ArtifactFrontendAsset stores one embedded frontend static asset.

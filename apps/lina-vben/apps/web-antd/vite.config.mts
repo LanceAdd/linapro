@@ -13,12 +13,13 @@ const pluginSlotModuleId = 'virtual:lina-plugin-slots';
 const appThirdPartyLocaleModuleId = 'virtual:lina-app-third-party-locales';
 const vxeLocaleModuleId = 'virtual:lina-vxe-locales';
 const appRequire = createRequire(import.meta.url);
+const sourcePluginsEnabled = process.env.LINAPRO_SOURCE_PLUGINS === '1';
 
 function collectPluginSourceFiles(pluginRoot: string) {
   const pageFiles: string[] = [];
   const slotFiles: string[] = [];
 
-  if (!existsSync(pluginRoot)) {
+  if (!sourcePluginsEnabled || !existsSync(pluginRoot)) {
     return { pageFiles, slotFiles };
   }
 
@@ -334,6 +335,8 @@ function buildVxeLocaleModuleCode(
 export default defineConfig(async () => {
   const vbenRoot = join(import.meta.dirname, '../..');
   const pluginRoot = join(import.meta.dirname, '../../../lina-plugins');
+  const appDependencyImporter = join(import.meta.dirname, 'src/main.ts');
+  const appNodeModulesRoot = join(import.meta.dirname, 'node_modules');
   const runtimeLocales = collectRuntimeLocaleNames([
     join(vbenRoot, 'packages/locales/src/langs'),
     join(import.meta.dirname, 'src/locales/langs'),
@@ -359,13 +362,21 @@ export default defineConfig(async () => {
       plugins: [
         {
           name: 'lina-plugin-source-deps',
-          resolveId(source, importer) {
+          enforce: 'pre',
+          async resolveId(source, importer) {
             if (
               !importer ||
               !isPluginFrontendSourceFile(pluginRoot, importer) ||
               !isBareModuleImport(source)
             ) {
               return null;
+            }
+
+            const resolved = await this.resolve(source, appDependencyImporter, {
+              skipSelf: true,
+            });
+            if (resolved) {
+              return resolved;
             }
 
             try {
@@ -378,6 +389,9 @@ export default defineConfig(async () => {
         {
           name: 'lina-plugin-registry',
           configureServer(server) {
+            if (!sourcePluginsEnabled) {
+              return;
+            }
             server.watcher.add(pluginRoot);
 
             const handlePluginSourceChange = (filePath: string) => {
@@ -439,11 +453,19 @@ export default defineConfig(async () => {
             find: /^#\//,
             replacement: `${join(import.meta.dirname, 'src')}/`,
           },
+          {
+            find: /^ant-design-vue(\/.*)?$/,
+            replacement: `${normalizeFsPath(join(appNodeModulesRoot, 'ant-design-vue'))}$1`,
+          },
+          {
+            find: /^vue$/,
+            replacement: normalizeFsPath(join(appNodeModulesRoot, 'vue')),
+          },
         ],
       },
       server: {
         fs: {
-          allow: [vbenRoot, pluginRoot],
+          allow: sourcePluginsEnabled ? [vbenRoot, pluginRoot] : [vbenRoot],
         },
         proxy: {
           '/api': {

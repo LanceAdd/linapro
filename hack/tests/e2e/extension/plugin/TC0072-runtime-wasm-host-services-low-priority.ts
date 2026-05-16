@@ -65,6 +65,23 @@ function writeTestFile(filePath: string, content: string) {
   writeFileSync(filePath, content);
 }
 
+function pluginGoModContent(moduleName: string) {
+  const hostModulePath = path
+    .join(repoRoot(), "apps", "lina-core")
+    .replaceAll("\\", "/");
+  return `module ${moduleName}
+
+go 1.25.0
+
+require (
+	github.com/gogf/gf/v2 v2.10.1
+	lina-core v0.0.0
+)
+
+replace lina-core => ${hostModulePath}
+`;
+}
+
 function assertOk(response: APIResponse, message: string) {
   expect(response.ok(), `${message}, status=${response.status()}`).toBeTruthy();
 }
@@ -453,10 +470,7 @@ function buildSuccessPluginSource() {
 
   writeTestFile(
     path.join(pluginDir, "go.mod"),
-    `module ${moduleName}
-
-go 1.25.0
-`,
+    pluginGoModContent(moduleName),
   );
   writeTestFile(path.join(pluginDir, "main.go"), buildPluginRuntimeMain(moduleName));
   writeTestFile(path.join(pluginDir, "plugin_embed.go"), buildPluginEmbedFile());
@@ -467,6 +481,9 @@ go 1.25.0
 name: Low Priority Host Services E2E
 version: v0.1.0
 type: dynamic
+scope_nature: tenant_aware
+supports_multi_tenant: false
+default_install_mode: global
 hostServices:
   - service: cache
     methods:
@@ -643,10 +660,7 @@ function buildDeniedPluginSource() {
 
   writeTestFile(
     path.join(pluginDir, "go.mod"),
-    `module ${moduleName}
-
-go 1.25.0
-`,
+    pluginGoModContent(moduleName),
   );
   writeTestFile(path.join(pluginDir, "main.go"), buildPluginRuntimeMain(moduleName));
   writeTestFile(path.join(pluginDir, "plugin_embed.go"), buildPluginEmbedFile());
@@ -657,6 +671,9 @@ go 1.25.0
 name: Low Priority Host Services Denied E2E
 version: v0.1.0
 type: dynamic
+scope_nature: tenant_aware
+supports_multi_tenant: false
+default_install_mode: global
 hostServices:
   - service: cache
     methods:
@@ -772,6 +789,14 @@ function buildDynamicPluginArtifact(pluginDir: string, pluginID: string) {
     ].join("\n"),
   );
   try {
+    execFileSync("go", ["mod", "tidy"], {
+      cwd: pluginDir,
+      env: {
+        ...process.env,
+        GOWORK: goWorkPath,
+      },
+      stdio: "pipe",
+    });
     execFileSync(
       "go",
       [

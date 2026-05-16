@@ -108,6 +108,9 @@ func (s *serviceImpl) GetActiveRelease(ctx context.Context, pluginID string) (*e
 		}).
 		OrderDesc(dao.SysPluginRelease.Columns().Id).
 		Scan(&release)
+	if isCatalogNoRows(err) {
+		return nil, nil
+	}
 	return release, err
 }
 
@@ -306,10 +309,14 @@ func (s *serviceImpl) buildManifestSnapshotModel(manifest *Manifest) (*ManifestS
 		Name:                      manifest.Name,
 		Version:                   manifest.Version,
 		Type:                      manifest.Type,
+		ScopeNature:               manifest.ScopeNature,
+		SupportsMultiTenant:       manifest.SupportsTenantGovernance(),
+		DefaultInstallMode:        manifest.DefaultInstallMode,
 		Description:               manifest.Description,
 		Author:                    manifest.Author,
 		Homepage:                  manifest.Homepage,
 		License:                   manifest.License,
+		Dependencies:              CloneDependencySpec(manifest.Dependencies),
 		RuntimeKind:               buildDynamicKind(manifest),
 		RuntimeABIVersion:         buildDynamicABIVersion(manifest),
 		ManifestDeclared:          s.isManifestDeclared(manifest),

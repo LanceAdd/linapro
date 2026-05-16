@@ -4,15 +4,22 @@ package plugin
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
+	"lina-core/internal/model/entity"
 	"lina-core/internal/service/plugin/internal/catalog"
 	"lina-core/pkg/bizerr"
+	"lina-core/pkg/logger"
+	"lina-core/pkg/pluginhost"
 )
 
-// Install executes the install lifecycle and optionally persists one host-confirmed
-// host service authorization snapshot when the target is a dynamic plugin. The
-// options.InstallMockData flag is threaded through context so deeply nested
-// runtime/reconciler code can detect mock opt-in without mass signature changes.
+// Install executes the install lifecycle and returns the dependency plan/result
+// generated before target plugin side effects. It optionally persists one
+// host-confirmed host service authorization snapshot when the target is a dynamic
+// plugin. The options.InstallMockData flag is threaded through context so deeply
+// nested runtime/reconciler code can detect mock opt-in without mass signature
+// changes.
 //
 // On a rolled-back mock-data load the plugin is fully installed (registry, menus,
 // release state) — only the mock data was reverted. Install returns a stable
@@ -22,62 +29,118 @@ func (s *serviceImpl) Install(
 	ctx context.Context,
 	pluginID string,
 	options InstallOptions,
-) (err error) {
+) (result *DependencyCheckResult, err error) {
 	ctx = withInstallMockData(ctx, options.InstallMockData)
 	defer func() {
 		err = wrapMockDataLoadError(err)
 	}()
 
+	result, ctx, err = s.prepareInstallDependencies(ctx, pluginID, options)
+	if err != nil {
+		return result, err
+	}
+	options.dependencyResult = result
+
 	manifest, err := s.catalogSvc.GetDesiredManifest(pluginID)
 	if err != nil {
-		return err
+		return result, err
+	}
+	if err = applyInstallModeSelection(manifest, options.InstallMode); err != nil {
+		return result, err
 	}
 	if catalog.NormalizeType(manifest.Type) == catalog.TypeSource {
 		if err = s.installSourcePlugin(ctx, manifest); err != nil {
 			if !isMockDataLoadError(err) {
-				return err
+				return result, err
 			}
 			if snapshotErr := s.syncEnabledSnapshotFromRegistry(ctx, pluginID); snapshotErr != nil {
-				return snapshotErr
+				return result, snapshotErr
 			}
 			if markErr := s.markRuntimeCacheChanged(ctx, "source_plugin_installed"); markErr != nil {
-				return markErr
+				return result, markErr
 			}
-			return err
+			return result, err
 		}
 		if err = s.syncEnabledSnapshotFromRegistry(ctx, pluginID); err != nil {
-			return err
+			return result, err
 		}
 		if err = s.markRuntimeCacheChanged(ctx, "source_plugin_installed"); err != nil {
-			return err
+			return result, err
 		}
-		return notifyPluginInstalled(ctx, pluginID)
+		return result, notifyPluginInstalled(ctx, pluginID)
 	}
 	if err = s.persistDynamicPluginAuthorization(ctx, manifest, options.Authorization); err != nil {
-		return err
+		return result, err
 	}
 	if err = s.lifecycleSvc.Install(ctx, pluginID); err != nil {
-		return err
+		return result, err
+	}
+	// Dynamic lifecycle reloads the manifest from the runtime artifact. Re-sync
+	// the operator-selected governance fields so installMode cannot be reset to
+	// the artifact default after the request has already been validated.
+	if _, err = s.catalogSvc.SyncManifest(ctx, manifest); err != nil {
+		return result, err
 	}
 	if err = s.syncEnabledSnapshotFromRegistry(ctx, pluginID); err != nil {
-		return err
+		return result, err
 	}
-	return notifyPluginInstalled(ctx, pluginID)
+	return result, notifyPluginInstalled(ctx, pluginID)
 }
 
-// Uninstall executes the uninstall lifecycle for an installed plugin.
-func (s *serviceImpl) Uninstall(ctx context.Context, pluginID string) error {
-	return s.UninstallWithOptions(ctx, pluginID, UninstallOptions{PurgeStorageData: true})
+// applyInstallModeSelection validates the explicit install-mode request and
+// applies it to the short-lived desired manifest before registry synchronization.
+func applyInstallModeSelection(manifest *catalog.Manifest, installMode string) error {
+	if manifest == nil {
+		return nil
+	}
+	scopeNature := catalog.NormalizeScopeNature(manifest.ScopeNature)
+	if strings.TrimSpace(installMode) != "" && !catalog.IsSupportedInstallMode(installMode) {
+		return bizerr.NewCode(CodePluginInstallModeInvalid)
+	}
+	if !manifest.SupportsTenantGovernance() {
+		manifest.DefaultInstallMode = catalog.InstallModeGlobal.String()
+		if strings.TrimSpace(installMode) != "" && catalog.NormalizeInstallMode(installMode) != catalog.InstallModeGlobal {
+			return bizerr.NewCode(
+				CodePluginInstallModeInvalidForScopeNature,
+				bizerr.P("scopeNature", scopeNature.String()),
+				bizerr.P("installMode", catalog.NormalizeInstallMode(installMode).String()),
+			)
+		}
+		return nil
+	}
+	if strings.TrimSpace(installMode) == "" {
+		installMode = manifest.DefaultInstallMode
+	}
+	if !catalog.IsSupportedInstallMode(installMode) {
+		return bizerr.NewCode(CodePluginInstallModeInvalid)
+	}
+	mode := catalog.NormalizeInstallMode(installMode)
+	if scopeNature == catalog.ScopeNaturePlatformOnly && mode != catalog.InstallModeGlobal {
+		return bizerr.NewCode(
+			CodePluginInstallModeInvalidForScopeNature,
+			bizerr.P("pluginId", manifest.ID),
+			bizerr.P("scopeNature", scopeNature.String()),
+			bizerr.P("installMode", mode.String()),
+		)
+	}
+	manifest.DefaultInstallMode = mode.String()
+	return nil
 }
 
-// UninstallWithOptions executes the uninstall lifecycle for an installed plugin using one explicit policy snapshot.
-func (s *serviceImpl) UninstallWithOptions(
+// Uninstall executes the uninstall lifecycle for an installed plugin using one explicit policy snapshot.
+func (s *serviceImpl) Uninstall(
 	ctx context.Context,
 	pluginID string,
 	options UninstallOptions,
 ) error {
 	manifest, err := s.catalogSvc.GetDesiredManifest(pluginID)
 	if err != nil {
+		return s.uninstallWithoutDesiredManifest(ctx, pluginID, options, err)
+	}
+	if err = s.ensureNoReverseDependencies(ctx, pluginID); err != nil {
+		return err
+	}
+	if err = s.ensureLifecycleGuardAllowed(ctx, pluginID, pluginhost.GuardHookCanUninstall, options.Force); err != nil {
 		return err
 	}
 	if catalog.NormalizeType(manifest.Type) == catalog.TypeSource {
@@ -92,13 +155,120 @@ func (s *serviceImpl) UninstallWithOptions(
 		}
 		return notifyPluginUninstalled(ctx, pluginID)
 	}
-	if err = s.runtimeSvc.UninstallWithOptions(ctx, pluginID, options.PurgeStorageData); err != nil {
+	if err = s.uninstallDynamicPlugin(ctx, pluginID, options); err != nil {
 		return err
 	}
 	if err = s.syncEnabledSnapshotFromRegistry(ctx, pluginID); err != nil {
 		return err
 	}
 	return notifyPluginUninstalled(ctx, pluginID)
+}
+
+// uninstallWithoutDesiredManifest keeps dynamic-plugin uninstall recoverable
+// when the mutable staging artifact is missing but the registry still carries
+// enough active-release state to complete or force one uninstall.
+func (s *serviceImpl) uninstallWithoutDesiredManifest(
+	ctx context.Context,
+	pluginID string,
+	options UninstallOptions,
+	discoveryErr error,
+) error {
+	registry, err := s.catalogSvc.GetRegistry(ctx, pluginID)
+	if err != nil {
+		return err
+	}
+	if registry == nil || catalog.NormalizeType(registry.Type) != catalog.TypeDynamic {
+		return discoveryErr
+	}
+	if err = s.ensureNoReverseDependencies(ctx, pluginID); err != nil {
+		return err
+	}
+	if err = s.ensureLifecycleGuardAllowed(ctx, pluginID, pluginhost.GuardHookCanUninstall, options.Force); err != nil {
+		return err
+	}
+	if err = s.uninstallDynamicPlugin(ctx, pluginID, options); err != nil {
+		return err
+	}
+	if err = s.syncEnabledSnapshotFromRegistry(ctx, pluginID); err != nil {
+		return err
+	}
+	return notifyPluginUninstalled(ctx, pluginID)
+}
+
+// uninstallDynamicPlugin chooses between the full active-release uninstall and
+// the restricted orphan cleanup path used only when active dynamic artifacts are
+// no longer readable.
+func (s *serviceImpl) uninstallDynamicPlugin(
+	ctx context.Context,
+	pluginID string,
+	options UninstallOptions,
+) error {
+	registry, err := s.catalogSvc.GetRegistry(ctx, pluginID)
+	if err != nil {
+		return err
+	}
+	if registry == nil || catalog.NormalizeType(registry.Type) != catalog.TypeDynamic {
+		return s.runtimeSvc.UninstallWithOptions(ctx, pluginID, options.PurgeStorageData)
+	}
+	if registry.Installed != catalog.InstalledYes {
+		if options.Force {
+			return s.forceUninstallMissingDynamicArtifact(ctx, registry)
+		}
+		return s.runtimeSvc.UninstallWithOptions(ctx, pluginID, options.PurgeStorageData)
+	}
+	if s.dynamicFullUninstallRecoverable(ctx, registry) {
+		if err = s.runtimeSvc.UninstallWithOptions(ctx, pluginID, options.PurgeStorageData); err == nil {
+			return nil
+		}
+		refreshed, refreshErr := s.catalogSvc.GetRegistry(ctx, pluginID)
+		if refreshErr != nil {
+			return refreshErr
+		}
+		if !options.Force || s.dynamicFullUninstallRecoverable(ctx, refreshed) {
+			return err
+		}
+		registry = refreshed
+	}
+	if !options.Force {
+		return bizerr.NewCode(
+			CodePluginDynamicArtifactMissingForUninstall,
+			bizerr.P("pluginId", pluginID),
+		)
+	}
+	return s.forceUninstallMissingDynamicArtifact(ctx, registry)
+}
+
+// dynamicFullUninstallRecoverable reports whether the installed dynamic plugin
+// can run full uninstall from its archived active release or repair that archive
+// from the current same-version staging artifact.
+func (s *serviceImpl) dynamicFullUninstallRecoverable(ctx context.Context, registry *entity.SysPlugin) bool {
+	if registry == nil || catalog.NormalizeType(registry.Type) != catalog.TypeDynamic {
+		return false
+	}
+	manifest, err := s.runtimeSvc.LoadActiveDynamicPluginManifest(ctx, registry)
+	if err == nil && manifest != nil {
+		return true
+	}
+	desiredManifest, err := s.catalogSvc.GetDesiredManifest(registry.PluginId)
+	if err != nil || desiredManifest == nil {
+		return false
+	}
+	if catalog.NormalizeType(desiredManifest.Type) != catalog.TypeDynamic {
+		return false
+	}
+	if strings.TrimSpace(desiredManifest.Version) != strings.TrimSpace(registry.Version) {
+		return false
+	}
+	return desiredManifest.RuntimeArtifact != nil
+}
+
+// forceUninstallMissingDynamicArtifact validates host policy before clearing
+// host-owned orphan governance for a dynamic plugin with unreadable artifacts.
+func (s *serviceImpl) forceUninstallMissingDynamicArtifact(ctx context.Context, registry *entity.SysPlugin) error {
+	if err := s.ensureForceUninstallEnabled(ctx); err != nil {
+		return err
+	}
+	return s.runtimeSvc.ForceUninstallMissingArtifact(ctx, registry)
 }
 
 // UpdateStatus updates plugin status, where status is 1=enabled and 0=disabled,
@@ -130,6 +300,11 @@ func (s *serviceImpl) updateStatus(
 	}
 	if status == catalog.StatusEnabled && catalog.NormalizeType(manifest.Type) == catalog.TypeDynamic {
 		if err = s.runtimeSvc.EnsureRuntimeArtifactAvailable(manifest, "enable"); err != nil {
+			return err
+		}
+	}
+	if status == catalog.StatusDisabled {
+		if err = s.ensureLifecycleGuardAllowed(ctx, pluginID, pluginhost.GuardHookCanDisable, false); err != nil {
 			return err
 		}
 	}
@@ -224,4 +399,102 @@ func (s *serviceImpl) IsInstalled(ctx context.Context, pluginID string) bool {
 func (s *serviceImpl) IsEnabled(ctx context.Context, pluginID string) bool {
 	s.ensureRuntimeCacheFreshBestEffort(ctx, "is_enabled")
 	return s.integrationSvc.IsEnabled(ctx, pluginID)
+}
+
+// EnsureTenantDeleteAllowed runs plugin lifecycle guards before tenant deletion
+// continues in the tenant capability provider.
+func (s *serviceImpl) EnsureTenantDeleteAllowed(ctx context.Context, tenantID int) error {
+	return s.ensureTenantLifecycleGuardAllowed(ctx, tenantID, pluginhost.GuardHookCanTenantDelete)
+}
+
+// ensureTenantLifecycleGuardAllowed runs tenant-scoped lifecycle guards and
+// converts vetoes to the same stable lifecycle guard error used by plugin
+// disable and uninstall operations.
+func (s *serviceImpl) ensureTenantLifecycleGuardAllowed(ctx context.Context, tenantID int, hook pluginhost.GuardHook) error {
+	result := pluginhost.RunLifecycleGuards(ctx, pluginhost.GuardRequest{
+		Hook:         hook,
+		TenantID:     tenantID,
+		Participants: pluginhost.ListLifecycleGuardParticipants(),
+	})
+	if result.OK {
+		return nil
+	}
+
+	return bizerr.NewCode(
+		CodePluginLifecycleGuardVetoed,
+		bizerr.P("operation", hook.String()),
+		bizerr.P("pluginId", "tenant:"+strconv.Itoa(tenantID)),
+		bizerr.P("reasons", summarizeGuardVetoReasons(result.Decisions)),
+	)
+}
+
+// ensureLifecycleGuardAllowed runs source-plugin lifecycle guards before a
+// protected plugin action and converts vetoes to stable caller-visible errors.
+func (s *serviceImpl) ensureLifecycleGuardAllowed(
+	ctx context.Context,
+	pluginID string,
+	hook pluginhost.GuardHook,
+	force bool,
+) error {
+	result := pluginhost.RunLifecycleGuards(ctx, pluginhost.GuardRequest{
+		Hook:         hook,
+		Participants: pluginhost.ListLifecycleGuardParticipantsForPlugin(pluginID),
+	})
+	if result.OK {
+		return nil
+	}
+
+	reasons := summarizeGuardVetoReasons(result.Decisions)
+	if force && hook == pluginhost.GuardHookCanUninstall {
+		if err := s.ensureForceUninstallEnabled(ctx); err != nil {
+			return err
+		}
+		logger.Warningf(
+			ctx,
+			"plugin lifecycle guard force bypass operation=%s plugin=%s reasons=%s",
+			hook,
+			pluginID,
+			reasons,
+		)
+		return nil
+	}
+
+	return bizerr.NewCode(
+		CodePluginLifecycleGuardVetoed,
+		bizerr.P("operation", hook.String()),
+		bizerr.P("pluginId", pluginID),
+		bizerr.P("reasons", reasons),
+	)
+}
+
+// ensureForceUninstallEnabled verifies that host configuration explicitly
+// permits destructive force-uninstall flows.
+func (s *serviceImpl) ensureForceUninstallEnabled(ctx context.Context) error {
+	if !s.configSvc.GetPlugin(ctx).AllowForceUninstall {
+		return bizerr.NewCode(CodePluginForceUninstallDisabled)
+	}
+	return nil
+}
+
+// summarizeGuardVetoReasons builds one deterministic reason string for bizerr
+// params and audit logs.
+func summarizeGuardVetoReasons(decisions []pluginhost.GuardDecision) string {
+	items := make([]string, 0, len(decisions))
+	for _, decision := range decisions {
+		if decision.OK {
+			continue
+		}
+		reason := strings.TrimSpace(decision.Reason)
+		if reason == "" && decision.Err != nil {
+			reason = decision.Err.Error()
+		}
+		if reason == "" {
+			reason = "plugin." + strings.TrimSpace(decision.PluginID) + ".guard.vetoed"
+		}
+		items = append(items, strings.TrimSpace(decision.PluginID)+":"+reason)
+	}
+	if len(items) == 0 {
+		return "unknown"
+	}
+	return strings.Join(items, ";")
 }

@@ -29,8 +29,6 @@ import (
 	"lina-core/internal/service/config"
 	"lina-core/internal/service/datascope"
 	dictsvc "lina-core/internal/service/dict"
-	"lina-core/internal/service/orgcap"
-	"lina-core/internal/service/role"
 	"lina-core/pkg/bizerr"
 	"lina-core/pkg/closeutil"
 	"lina-core/pkg/gdbutil"
@@ -80,37 +78,18 @@ type serviceImpl struct {
 	storage   Storage         // Storage backend
 	bizCtxSvc bizctx.Service  // Business context service
 	dictSvc   dictsvc.Service // Dictionary service for scene labels
-	orgCapSvc orgcap.Service  // Optional organization capability service
 	scopeSvc  datascope.Service
 }
 
-// New creates and returns a new Service instance with local storage.
-func New(orgCapSvcs ...orgcap.Service) Service {
-	var (
-		ctx         = context.Background()
-		configSvc   = config.New()
-		storagePath = configSvc.GetUploadPath(ctx)
-	)
-	var orgCapSvc orgcap.Service
-	if len(orgCapSvcs) > 0 {
-		orgCapSvc = orgCapSvcs[0]
-	}
-	if orgCapSvc == nil {
-		orgCapSvc = orgcap.New(nil)
-	}
-	svc := &serviceImpl{
+// New creates and returns a new file service from explicit runtime-owned dependencies.
+func New(configSvc config.Service, storage Storage, bizCtxSvc bizctx.Service, dictSvc dictsvc.Service, scopeSvc datascope.Service) Service {
+	return &serviceImpl{
 		configSvc: configSvc,
-		storage:   NewLocalStorage(storagePath),
-		bizCtxSvc: bizctx.New(),
-		dictSvc:   dictsvc.New(),
-		orgCapSvc: orgCapSvc,
+		storage:   storage,
+		bizCtxSvc: bizCtxSvc,
+		dictSvc:   dictSvc,
+		scopeSvc:  scopeSvc,
 	}
-	svc.scopeSvc = datascope.New(datascope.Dependencies{
-		BizCtxSvc: svc.bizCtxSvc,
-		RoleSvc:   role.New(nil),
-		OrgCapSvc: svc.orgCapSvc,
-	})
-	return svc
 }
 
 // UploadInput defines input for file upload.
@@ -188,9 +167,9 @@ func (s *serviceImpl) Upload(ctx context.Context, in *UploadInput) (output *Uplo
 	err = dao.SysFile.Ctx(ctx).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
 		// Check for duplicate file by hash
 		var existing *entity.SysFile
-		err := dao.SysFile.Ctx(ctx).
-			Where(dao.SysFile.Columns().Hash, fileHash).
-			Scan(&existing)
+		existingModel := dao.SysFile.Ctx(ctx).Where(dao.SysFile.Columns().Hash, fileHash)
+		existingModel = datascope.ApplyTenantScope(ctx, existingModel, datascope.TenantColumn)
+		err := existingModel.Scan(&existing)
 		if err != nil {
 			return bizerr.WrapCode(err, CodeFileHashQueryFailed)
 		}
@@ -466,7 +445,9 @@ func (s *serviceImpl) InfoByIds(ctx context.Context, ids []int64) ([]*entity.Sys
 		return nil, err
 	}
 	var files []*entity.SysFile
-	err := dao.SysFile.Ctx(ctx).WhereIn(dao.SysFile.Columns().Id, ids).Scan(&files)
+	model := dao.SysFile.Ctx(ctx).WhereIn(dao.SysFile.Columns().Id, ids)
+	model = datascope.ApplyTenantScope(ctx, model, datascope.TenantColumn)
+	err := model.Scan(&files)
 	if err != nil {
 		return nil, bizerr.WrapCode(err, CodeFileRecordQueryFailed)
 	}
@@ -499,13 +480,17 @@ func (s *serviceImpl) Delete(ctx context.Context, idsStr string) error {
 
 	// Get file records first to delete physical files
 	var files []*entity.SysFile
-	err := dao.SysFile.Ctx(ctx).WhereIn(dao.SysFile.Columns().Id, idList).Scan(&files)
+	model := dao.SysFile.Ctx(ctx).WhereIn(dao.SysFile.Columns().Id, idList)
+	model = datascope.ApplyTenantScope(ctx, model, datascope.TenantColumn)
+	err := model.Scan(&files)
 	if err != nil {
 		return err
 	}
 
 	// Soft delete from DB
-	_, err = dao.SysFile.Ctx(ctx).WhereIn(dao.SysFile.Columns().Id, idList).Delete()
+	deleteModel := dao.SysFile.Ctx(ctx).WhereIn(dao.SysFile.Columns().Id, idList)
+	deleteModel = datascope.ApplyTenantScope(ctx, deleteModel, datascope.TenantColumn)
+	_, err = deleteModel.Delete()
 	if err != nil {
 		return err
 	}
@@ -550,9 +535,9 @@ func (s *serviceImpl) OpenByPath(ctx context.Context, storagePath string) (*Open
 	}
 
 	var fileInfo *entity.SysFile
-	err := dao.SysFile.Ctx(ctx).
-		Where(dao.SysFile.Columns().Path, normalizedPath).
-		Scan(&fileInfo)
+	model := dao.SysFile.Ctx(ctx).Where(dao.SysFile.Columns().Path, normalizedPath)
+	model = datascope.ApplyTenantScope(ctx, model, datascope.TenantColumn)
+	err := model.Scan(&fileInfo)
 	if err != nil {
 		return nil, bizerr.WrapCode(err, CodeFileRecordQueryFailed)
 	}

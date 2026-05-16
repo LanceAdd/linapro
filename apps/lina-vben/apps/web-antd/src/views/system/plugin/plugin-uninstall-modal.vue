@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import type { SystemPlugin } from '#/api/system/plugin/model';
+import type {
+  PluginDependencyCheckResult,
+  SystemPlugin,
+} from '#/api/system/plugin/model';
 
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 import { useVbenModal } from '@vben/common-ui';
 
@@ -14,12 +17,25 @@ import {
   message,
 } from 'ant-design-vue';
 
-import { pluginUninstall } from '#/api/system/plugin';
+import { pluginDependencyCheck, pluginUninstall } from '#/api/system/plugin';
 import { $t } from '#/locales';
 
-const emit = defineEmits<{ reload: [] }>();
+import PluginDependencySummary from './plugin-dependency-summary.vue';
+
+const emit = defineEmits<{
+  lifecycleGuard: [
+    payload: {
+      force: () => Promise<void>;
+      pluginId: string;
+      reasons: string[];
+    },
+  ];
+  reload: [];
+}>();
 
 const currentPlugin = ref<SystemPlugin | null>(null);
+const dependencyCheck = ref<null | PluginDependencyCheckResult>(null);
+const dependencyLoading = ref(false);
 const purgeStorageData = ref(true);
 
 const [BasicModal, modalApi] = useVbenModal({
@@ -36,6 +52,15 @@ const isAutoEnableManaged = computed(
 const supportsPurgeStorageData = computed(
   () => isSourcePlugin.value || isDynamicPlugin.value,
 );
+const reverseDependencyBlocked = computed(() => {
+  return (
+    dependencyLoading.value ||
+    (dependencyCheck.value?.reverseDependents ?? []).length > 0 ||
+    (dependencyCheck.value?.reverseBlockers ?? []).length > 0
+  );
+});
+
+watch(reverseDependencyBlocked, updateConfirmDisabled);
 
 async function handleOpenChange(open: boolean) {
   if (!open) {
@@ -43,33 +68,196 @@ async function handleOpenChange(open: boolean) {
   }
   const data = modalApi.getData<{ row: SystemPlugin }>();
   currentPlugin.value = data?.row ?? null;
+  dependencyCheck.value = currentPlugin.value?.dependencyCheck ?? null;
   purgeStorageData.value = supportsPurgeStorageData.value;
+  await refreshDependencyCheck();
+  updateConfirmDisabled();
 }
 
 async function handleConfirm() {
+  if (reverseDependencyBlocked.value) {
+    message.warning(
+      $t('pages.system.plugin.dependency.resolveBeforeUninstall'),
+    );
+    return;
+  }
+  await submitUninstall(false);
+}
+
+async function forceUninstall() {
+  await submitUninstall(true);
+}
+
+async function forceUninstallByState(
+  pluginId: string,
+  purgeStorageDataValue?: boolean,
+) {
+  await submitUninstallByState(pluginId, purgeStorageDataValue, true);
+}
+
+async function submitUninstall(force: boolean) {
   if (!currentPlugin.value) {
     return;
   }
 
+  const pluginId = currentPlugin.value.id;
+  const purgeStorageDataValue = supportsPurgeStorageData.value
+    ? purgeStorageData.value
+    : undefined;
+
+  await submitUninstallByState(pluginId, purgeStorageDataValue, force);
+}
+
+async function submitUninstallByState(
+  pluginId: string,
+  purgeStorageDataValue: boolean | undefined,
+  force: boolean,
+) {
   try {
     modalApi.lock(true);
-    await pluginUninstall(
-      currentPlugin.value.id,
-      supportsPurgeStorageData.value ? purgeStorageData.value : undefined,
-    );
-    message.success($t('pages.system.plugin.messages.uninstalled'));
-    emit('reload');
-    handleClosed();
+    try {
+      await pluginUninstall(pluginId, {
+        force,
+        purgeStorageData: purgeStorageDataValue,
+      });
+      message.success($t('pages.system.plugin.messages.uninstalled'));
+      emit('reload');
+      handleClosed();
+    } catch (error) {
+      if (
+        !force &&
+        handleLifecycleGuardVeto(error, pluginId, purgeStorageDataValue)
+      ) {
+        return;
+      }
+      message.error(resolveRuntimeErrorMessage(error));
+      if (force) {
+        throw error;
+      }
+    }
   } finally {
     modalApi.lock(false);
   }
 }
 
+function handleLifecycleGuardVeto(
+  error: unknown,
+  pluginId: string,
+  purgeStorageDataValue: boolean | undefined,
+) {
+  const reasons = extractLifecycleGuardReasons(error);
+  if (!reasons) {
+    return false;
+  }
+  emit('lifecycleGuard', {
+    force: () => forceUninstallByState(pluginId, purgeStorageDataValue),
+    pluginId,
+    reasons,
+  });
+  handleClosed();
+  return true;
+}
+
+async function refreshDependencyCheck() {
+  if (!currentPlugin.value?.id) {
+    return;
+  }
+  dependencyLoading.value = true;
+  updateConfirmDisabled();
+  try {
+    dependencyCheck.value = await pluginDependencyCheck(currentPlugin.value.id);
+  } catch {
+    message.warning($t('pages.system.plugin.dependency.checkFailed'));
+  } finally {
+    dependencyLoading.value = false;
+    updateConfirmDisabled();
+  }
+}
+
+function updateConfirmDisabled() {
+  modalApi.setState({ confirmDisabled: reverseDependencyBlocked.value });
+}
+
+function extractLifecycleGuardReasons(error: unknown): null | string[] {
+  const envelope = extractRuntimeErrorEnvelope(error);
+  if (envelope?.errorCode !== 'PLUGIN_LIFECYCLE_GUARD_VETOED') {
+    return null;
+  }
+  return normalizeLifecycleGuardReasons(envelope.messageParams?.reasons);
+}
+
+function extractRuntimeErrorEnvelope(error: unknown): null | {
+  errorCode?: string;
+  message?: string;
+  messageKey?: string;
+  messageParams?: Record<string, unknown>;
+} {
+  if (!error || typeof error !== 'object') {
+    return null;
+  }
+  // RequestClient surfaces backend errors as the bizerr envelope directly, but
+  // tests and raw axios paths may still expose it under response.data.
+  const response = (error as { response?: { data?: unknown } }).response;
+  const envelope = (response?.data ?? error) as {
+    errorCode?: string;
+    message?: string;
+    messageKey?: string;
+    messageParams?: Record<string, unknown>;
+  };
+  return envelope;
+}
+
+function resolveRuntimeErrorMessage(error: unknown) {
+  const envelope = extractRuntimeErrorEnvelope(error);
+  if (envelope?.messageKey) {
+    const localized = $t(envelope.messageKey, envelope.messageParams || {});
+    if (localized && localized !== envelope.messageKey) {
+      return localized;
+    }
+  }
+  if (envelope?.message) {
+    return envelope.message;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return $t('ui.fallback.http.internalServerError');
+}
+
+function normalizeLifecycleGuardReasons(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeLifecycleGuardReason(String(item)))
+      .filter((item) => item.length > 0);
+  }
+  if (typeof value !== 'string') {
+    return [];
+  }
+  return value
+    .split(';')
+    .map((item) => normalizeLifecycleGuardReason(item))
+    .filter((item) => item.length > 0);
+}
+
+function normalizeLifecycleGuardReason(value: string) {
+  const trimmed = value.trim();
+  const separatorIndex = trimmed.indexOf(':');
+  if (separatorIndex < 0) {
+    return trimmed;
+  }
+  return trimmed.slice(separatorIndex + 1).trim();
+}
+
 function handleClosed() {
   modalApi.close();
   currentPlugin.value = null;
+  dependencyCheck.value = null;
+  dependencyLoading.value = false;
   purgeStorageData.value = true;
+  updateConfirmDisabled();
 }
+
+defineExpose({ forceUninstall });
 </script>
 
 <template>
@@ -131,6 +319,12 @@ function handleClosed() {
           </Tag>
         </DescriptionsItem>
       </Descriptions>
+
+      <PluginDependencySummary
+        :check="dependencyCheck"
+        :loading="dependencyLoading"
+        mode="uninstall"
+      />
 
       <Alert
         v-if="supportsPurgeStorageData"

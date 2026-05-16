@@ -13,8 +13,12 @@ import (
 	"github.com/gogf/gf/v2/os/gctx"
 
 	"lina-core/internal/model"
+	"lina-core/internal/service/bizctx"
+	"lina-core/internal/service/cachecoord"
+	"lina-core/internal/service/config"
 	"lina-core/pkg/bizerr"
 	"lina-core/pkg/pluginhost"
+	"lina-core/pkg/testsupport"
 )
 
 // TestLocalizeErrorSupportsStructuredRuntimeMessages verifies structured
@@ -34,17 +38,15 @@ func TestLocalizeErrorSupportsStructuredRuntimeMessages(t *testing.T) {
 	registerTestSourcePluginI18N(t, pluginID, map[string]string{
 		DefaultLocale: fmt.Sprintf(`{"test":{"structured":{"%s":"用户 {username} 不存在"}}}`, pluginID),
 		EnglishLocale: fmt.Sprintf(`{"test":{"structured":{"%s":"User {username} does not exist"}}}`, pluginID),
-		"zh-TW":       fmt.Sprintf(`{"test":{"structured":{"%s":"使用者 {username} 不存在"}}}`, pluginID),
 	})
 
-	svc := New()
+	svc := New(bizctx.New(), config.New(), cachecoord.Default(nil))
 	testCases := []struct {
 		locale   string
 		expected string
 	}{
 		{locale: DefaultLocale, expected: "用户 alice 不存在"},
 		{locale: EnglishLocale, expected: "User alice does not exist"},
-		{locale: "zh-TW", expected: "使用者 alice 不存在"},
 	}
 
 	for _, testCase := range testCases {
@@ -64,7 +66,7 @@ func TestLocalizeErrorSupportsStructuredRuntimeMessages(t *testing.T) {
 func TestLocalizeErrorUsesStructuredFallback(t *testing.T) {
 	resetRuntimeBundleCache()
 
-	svc := New()
+	svc := New(bizctx.New(), config.New(), cachecoord.Default(nil))
 	ctx := context.WithValue(context.Background(), gctx.StrKey("BizCtx"), &model.Context{Locale: EnglishLocale})
 	code := bizerr.MustDefineWithKey(
 		"TEST_STRUCTURED_MISSING_KEY",
@@ -103,7 +105,7 @@ func TestLocalizeErrorUsesRuntimeBundleCache(t *testing.T) {
 	pluginhost.RegisterSourcePlugin(plugin)
 	resetRuntimeBundleCache()
 
-	svc := New()
+	svc := New(bizctx.New(), config.New(), cachecoord.Default(nil))
 	ctx := context.WithValue(context.Background(), gctx.StrKey("BizCtx"), &model.Context{Locale: EnglishLocale})
 	err := bizerr.NewCode(code, bizerr.P("value", "message"))
 	if actual := svc.LocalizeError(ctx, err); actual != "Cached message" {
@@ -118,7 +120,7 @@ func TestLocalizeErrorUsesHostDataScopeErrorResources(t *testing.T) {
 	resetRuntimeBundleCache()
 	t.Cleanup(resetRuntimeBundleCache)
 
-	svc := New()
+	svc := New(bizctx.New(), config.New(), cachecoord.Default(nil))
 	testCases := []struct {
 		name     string
 		key      string
@@ -133,7 +135,6 @@ func TestLocalizeErrorUsesHostDataScopeErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "数据不在当前数据权限范围内",
 				EnglishLocale: "Data is outside the current data permission scope",
-				"zh-TW":       "數據不在當前數據權限範圍內",
 			},
 		},
 		{
@@ -143,7 +144,6 @@ func TestLocalizeErrorUsesHostDataScopeErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "请先登录",
 				EnglishLocale: "Not signed in",
-				"zh-TW":       "請先登錄",
 			},
 		},
 		{
@@ -154,7 +154,6 @@ func TestLocalizeErrorUsesHostDataScopeErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "不支持的数据权限范围：9",
 				EnglishLocale: "Unsupported data permission scope: 9",
-				"zh-TW":       "不支持的數據權限範圍：9",
 			},
 		},
 		{
@@ -164,7 +163,6 @@ func TestLocalizeErrorUsesHostDataScopeErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "用户数据超出当前数据权限范围",
 				EnglishLocale: "User data is outside the current data permission scope",
-				"zh-TW":       "用戶數據超出當前數據權限範圍",
 			},
 		},
 		{
@@ -174,7 +172,6 @@ func TestLocalizeErrorUsesHostDataScopeErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "文件数据不在当前数据权限范围内",
 				EnglishLocale: "File data is outside the current data permission scope",
-				"zh-TW":       "文件數據不在當前數據權限範圍內",
 			},
 		},
 		{
@@ -184,7 +181,6 @@ func TestLocalizeErrorUsesHostDataScopeErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "定时任务数据不在当前数据权限范围内",
 				EnglishLocale: "Scheduled job data is outside the current data permission scope",
-				"zh-TW":       "定時任務數據不在當前數據權限範圍內",
 			},
 		},
 		{
@@ -194,7 +190,25 @@ func TestLocalizeErrorUsesHostDataScopeErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "本部门数据权限需要先启用组织管理插件",
 				EnglishLocale: "Department data scope requires the organization management plugin to be enabled",
-				"zh-TW":       "本部門數據權限需要先啟用組織管理插件",
+			},
+		},
+		{
+			name:     "role unsupported scope",
+			key:      "error.role.data.scope.unsupported",
+			fallback: "Unsupported role data scope: {scope}",
+			params:   []bizerr.Param{bizerr.P("scope", 9)},
+			expected: map[string]string{
+				DefaultLocale: "不支持的角色数据权限范围：9",
+				EnglishLocale: "Unsupported role data scope: 9",
+			},
+		},
+		{
+			name:     "tenant role all-data forbidden",
+			key:      "error.tenant.role.all.data.scope.forbidden",
+			fallback: "Tenant roles cannot use all-data scope",
+			expected: map[string]string{
+				DefaultLocale: "租户角色不能使用全部数据权限",
+				EnglishLocale: "Tenant roles cannot use all-data scope",
 			},
 		},
 	}
@@ -220,6 +234,87 @@ func TestLocalizeErrorUsesHostDataScopeErrorResources(t *testing.T) {
 	}
 }
 
+// TestLocalizeErrorUsesHostUserTenantMembershipErrorResources verifies user
+// tenant-membership business errors ship runtime translations for built-in locales.
+func TestLocalizeErrorUsesHostUserTenantMembershipErrorResources(t *testing.T) {
+	resetRuntimeBundleCache()
+	t.Cleanup(resetRuntimeBundleCache)
+
+	svc := New(bizctx.New(), config.New(), cachecoord.Default(nil))
+	testCases := []struct {
+		name     string
+		key      string
+		fallback string
+		expected map[string]string
+	}{
+		{
+			name:     "query failed",
+			key:      "error.user.tenant.membership.query.failed",
+			fallback: "Failed to query tenant membership visibility",
+			expected: map[string]string{
+				DefaultLocale: "查询用户租户归属可见性失败",
+				EnglishLocale: "Failed to query tenant membership visibility",
+			},
+		},
+		{
+			name:     "replace failed",
+			key:      "error.user.tenant.membership.replace.failed",
+			fallback: "Failed to update tenant membership",
+			expected: map[string]string{
+				DefaultLocale: "更新用户租户归属失败",
+				EnglishLocale: "Failed to update tenant membership",
+			},
+		},
+		{
+			name:     "cross tenant denied",
+			key:      "error.user.tenant.membership.cross.tenant.denied",
+			fallback: "Cannot assign users to another tenant in the current context",
+			expected: map[string]string{
+				DefaultLocale: "当前上下文不能将用户分配到其他租户",
+				EnglishLocale: "Cannot assign users to another tenant in the current context",
+			},
+		},
+		{
+			name:     "tenant unavailable",
+			key:      "error.user.tenant.membership.tenant.unavailable",
+			fallback: "Selected tenant is unavailable",
+			expected: map[string]string{
+				DefaultLocale: "所选租户不可用",
+				EnglishLocale: "Selected tenant is unavailable",
+			},
+		},
+		{
+			name:     "cardinality exceeded",
+			key:      "error.user.tenant.membership.cardinality.exceeded",
+			fallback: "User can only belong to one tenant in the current configuration",
+			expected: map[string]string{
+				DefaultLocale: "当前配置下用户只能归属于一个租户",
+				EnglishLocale: "User can only belong to one tenant in the current configuration",
+			},
+		},
+	}
+
+	for index, testCase := range testCases {
+		testCase := testCase
+		index := index
+		t.Run(testCase.name, func(t *testing.T) {
+			code := bizerr.MustDefineWithKey(
+				fmt.Sprintf("TEST_USER_TENANT_MEMBERSHIP_ERROR_%d", index),
+				testCase.key,
+				testCase.fallback,
+				gcode.CodeInvalidParameter,
+			)
+			for locale, expected := range testCase.expected {
+				ctx := context.WithValue(context.Background(), gctx.StrKey("BizCtx"), &model.Context{Locale: locale})
+				err := bizerr.NewCode(code)
+				if actual := svc.LocalizeError(ctx, err); actual != expected {
+					t.Fatalf("expected %s localized error %q, got %q", locale, expected, actual)
+				}
+			}
+		})
+	}
+}
+
 // TestLocalizeErrorUsesRealPluginErrorResources verifies representative source
 // plugin business errors render through the shipped plugin runtime i18n files.
 func TestLocalizeErrorUsesRealPluginErrorResources(t *testing.T) {
@@ -227,6 +322,9 @@ func TestLocalizeErrorUsesRealPluginErrorResources(t *testing.T) {
 	t.Cleanup(resetRuntimeBundleCache)
 
 	repoRoot := findRepoRootForI18NTest(t)
+	if !testsupport.OfficialPluginsWorkspaceReady(repoRoot) {
+		t.Skip("official plugin workspace is not initialized")
+	}
 	pluginDirs := []string{
 		"content-notice",
 		"org-center",
@@ -239,7 +337,7 @@ func TestLocalizeErrorUsesRealPluginErrorResources(t *testing.T) {
 		registerSourcePluginDirectoryI18N(t, repoRoot, pluginDir)
 	}
 
-	svc := New()
+	svc := New(bizctx.New(), config.New(), cachecoord.Default(nil))
 	testCases := []struct {
 		name     string
 		key      string
@@ -254,7 +352,6 @@ func TestLocalizeErrorUsesRealPluginErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "通知公告不存在",
 				EnglishLocale: "Notice does not exist",
-				"zh-TW":       "通知公告不存在",
 			},
 		},
 		{
@@ -264,7 +361,6 @@ func TestLocalizeErrorUsesRealPluginErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "部门不存在",
 				EnglishLocale: "Department does not exist",
-				"zh-TW":       "部門不存在",
 			},
 		},
 		{
@@ -275,7 +371,6 @@ func TestLocalizeErrorUsesRealPluginErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "岗位ID 17 已分配给用户，不能删除",
 				EnglishLocale: "Post 17 has assigned users and cannot be deleted",
-				"zh-TW":       "崗位ID 17 已分配給用戶，不能刪除",
 			},
 		},
 		{
@@ -285,7 +380,6 @@ func TestLocalizeErrorUsesRealPluginErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "登录日志不存在",
 				EnglishLocale: "Login log does not exist",
-				"zh-TW":       "登錄日誌不存在",
 			},
 		},
 		{
@@ -295,7 +389,6 @@ func TestLocalizeErrorUsesRealPluginErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "操作日志不存在",
 				EnglishLocale: "Operation log does not exist",
-				"zh-TW":       "操作日誌不存在",
 			},
 		},
 		{
@@ -306,7 +399,6 @@ func TestLocalizeErrorUsesRealPluginErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "附件大小不能超过5MB",
 				EnglishLocale: "Attachment size must not exceed 5MB",
-				"zh-TW":       "附件大小不能超過5MB",
 			},
 		},
 		{
@@ -317,7 +409,6 @@ func TestLocalizeErrorUsesRealPluginErrorResources(t *testing.T) {
 			expected: map[string]string{
 				DefaultLocale: "记录标题长度不能超过128个字符",
 				EnglishLocale: "Record title must not exceed 128 characters",
-				"zh-TW":       "記錄標題長度不能超過128個字符",
 			},
 		},
 	}
@@ -355,9 +446,7 @@ func findRepoRootForI18NTest(t *testing.T) string {
 	current := workingDir
 	for {
 		if _, statErr := os.Stat(filepath.Join(current, "apps", "lina-core", "go.mod")); statErr == nil {
-			if _, pluginErr := os.Stat(filepath.Join(current, "apps", "lina-plugins")); pluginErr == nil {
-				return current
-			}
+			return current
 		}
 		parent := filepath.Dir(current)
 		if parent == current {

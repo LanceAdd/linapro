@@ -8,6 +8,7 @@ This directory stores repository-level development tools that are implemented as
 | --- | --- |
 | `build-wasm/` | Builds dynamic plugin `Wasm` runtime artifacts from source plugins. |
 | `image-builder/` | Builds and optionally pushes single-platform or multi-platform production LinaPro Docker images from root `hack/config.yaml`. |
+| `linactl/` | Provides the cross-platform LinaPro development command entrypoint used by Makefile and Windows `make.cmd` wrappers. |
 | `runtime-i18n/` | Scans runtime-visible hard-coded copy and validates host/plugin i18n key coverage. |
 
 ## Placement Rules
@@ -22,4 +23,4 @@ This directory stores repository-level development tools that are implemented as
 
 - Keep each tool self-contained and avoid coupling tool internals back into runtime service packages.
 - Update repository entry points such as `go.work`, root `Makefile`, and related tests whenever a tool path changes.
-- Framework and source-plugin upgrades are now handled by the `lina-upgrade` skill under `.claude/skills/lina-upgrade/`, not by a standalone Go tool in this directory.
+- Keep tool lifecycle guidance in each tool's own README, and avoid documenting removed command paths from this directory.

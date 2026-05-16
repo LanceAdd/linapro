@@ -43,6 +43,19 @@ func (f *fakeSourceUpgradeGovernanceService) ValidateSourcePluginUpgradeReadines
 	return f.readinessErr
 }
 
+// TestNewRequiresPluginService verifies source-upgrade facade construction
+// fails fast instead of creating an isolated host service graph.
+func TestNewRequiresPluginService(t *testing.T) {
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			t.Fatal("expected New to panic when plugin upgrade service is nil")
+		}
+	}()
+
+	New(nil)
+}
+
 // TestServiceImplDelegatesListSourcePluginStatuses verifies the published
 // facade returns the host service list output unchanged.
 func TestServiceImplDelegatesListSourcePluginStatuses(t *testing.T) {
@@ -52,7 +65,7 @@ func TestServiceImplDelegatesListSourcePluginStatuses(t *testing.T) {
 		DiscoveredVersion: "v0.5.0",
 	}}
 	fakeService := &fakeSourceUpgradeGovernanceService{listOutput: expected}
-	service := &serviceImpl{pluginSvc: fakeService}
+	service := New(fakeService)
 
 	items, err := service.ListSourcePluginStatuses(context.Background())
 	if err != nil {
@@ -76,7 +89,7 @@ func TestServiceImplDelegatesUpgradeSourcePlugin(t *testing.T) {
 		Executed:    true,
 	}
 	fakeService := &fakeSourceUpgradeGovernanceService{upgradeOutput: expected}
-	service := &serviceImpl{pluginSvc: fakeService}
+	service := New(fakeService)
 
 	result, err := service.UpgradeSourcePlugin(context.Background(), "plugin-demo-source")
 	if err != nil {
@@ -98,7 +111,7 @@ func TestServiceImplDelegatesUpgradeSourcePlugin(t *testing.T) {
 func TestServiceImplDelegatesValidateSourcePluginUpgradeReadiness(t *testing.T) {
 	expectedErr := errors.New("pending upgrade")
 	fakeService := &fakeSourceUpgradeGovernanceService{readinessErr: expectedErr}
-	service := &serviceImpl{pluginSvc: fakeService}
+	service := New(fakeService)
 
 	err := service.ValidateSourcePluginUpgradeReadiness(context.Background())
 	if !fakeService.validateCalled {

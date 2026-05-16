@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 import {
   waitForBusyIndicatorsToClear,
@@ -18,14 +18,22 @@ export class UserPage {
   /** Drawer submit can settle slowly in full-suite parallel runs. */
   private static readonly DRAWER_HIDDEN_TIMEOUT = 20000;
 
+  /** User drawer and batch-edit modal can initialize slowly in act containers. */
+  private static readonly DIALOG_READY_TIMEOUT = 20000;
+
   /** The Vben drawer (Sheet/Dialog) container */
   private get drawer() {
     return this.page
       .locator('[role="dialog"]')
       .filter({
-        has: this.page.getByPlaceholder(/请输入用户名|username/i),
+        has: this.page.getByPlaceholder(/请输入(?:账号|用户名)|account|username/i),
       })
       .last();
+  }
+
+  /** User drawer account input. */
+  private get drawerAccountInput() {
+    return this.drawer.getByPlaceholder(/请输入(?:账号|用户名)|account|username/i);
   }
 
   /** Username search input in the list filter form. */
@@ -49,9 +57,9 @@ export class UserPage {
 
   /** Wait until the user drawer has finished async schema/data initialization. */
   private async waitForDrawerReady(expectedUsername: string) {
-    await waitForDialogReady(this.drawer);
+    await waitForDialogReady(this.drawer, UserPage.DIALOG_READY_TIMEOUT);
 
-    const usernameInput = this.drawer.getByPlaceholder("请输入用户名");
+    const usernameInput = this.drawerAccountInput;
     await usernameInput.waitFor({ state: "visible", timeout: 10000 });
     await expect(usernameInput).toHaveValue(expectedUsername, {
       timeout: 10000,
@@ -69,13 +77,38 @@ export class UserPage {
    */
   private getUserDataRow(username: string) {
     return this.page
-      .locator(".vxe-body--row:visible", { hasText: username })
+      .locator(".vxe-table--main-wrapper .vxe-body--row:visible", {
+        hasText: username,
+      })
+      .first();
+  }
+
+  /** Resolve the fixed action-row fragment for the given primary table row. */
+  private async getFixedActionRowForDataRow(row: Locator) {
+    const rowID = await row.getAttribute("rowid");
+    expect(rowID, "missing VXE rowid for user row").toBeTruthy();
+    return this.page
+      .locator(
+        `.vxe-table--fixed-right-wrapper .vxe-body--row[rowid="${rowID}"]`,
+      )
       .first();
   }
 
   /** Public row locator for assertions after filtering. */
   getUserRow(username: string) {
     return this.getUserDataRow(username);
+  }
+
+  /** Tenant filter is rendered only when the multi-tenant plugin is active. */
+  get tenantFilter() {
+    return this.page.getByTestId("user-tenant-filter");
+  }
+
+  /** Tenant membership header is rendered only when tenant columns are active. */
+  get tenantMembershipHeader() {
+    return this.page
+      .locator(".vxe-header--column:visible")
+      .filter({ hasText: /所属租户|Tenant Memberships/i });
   }
 
   /** Check whether the left department tree shows the expected raw department label. */
@@ -106,7 +139,7 @@ export class UserPage {
     await this.waitForDrawerReady("");
 
     // Fill form fields scoped to the drawer to avoid conflict with the search form
-    await this.drawer.getByPlaceholder("请输入用户名").fill(username);
+    await this.drawerAccountInput.fill(username);
     await this.drawer.getByPlaceholder("请输入密码").fill(password);
     if (nickname) {
       await this.drawer.getByPlaceholder("请输入昵称").fill(nickname);
@@ -128,12 +161,14 @@ export class UserPage {
     // fixed overlay DOM tree. Search for the user first to narrow to one row.
     await this.searchByUsername(username);
 
-    // With search filtering to one row, click the first visible edit button
-    // Note: Ant Design adds space between Chinese chars in buttons ("编 辑")
-    await this.page
-      .getByRole("button", { name: /编\s*辑/ })
-      .first()
-      .click();
+    const row = this.getUserDataRow(username);
+    await row.waitFor({ state: "visible", timeout: 10000 });
+    const actionRow = await this.getFixedActionRowForDataRow(row);
+    const editButton = actionRow
+      .getByRole("button", { name: /编\s*辑|Edit/i })
+      .first();
+    await editButton.waitFor({ state: "visible", timeout: 5000 });
+    await editButton.click();
 
     await this.waitForDrawerReady(username);
 
@@ -204,12 +239,18 @@ export class UserPage {
 
   /** Click a column header to trigger sorting */
   async clickColumnSort(columnTitle: string) {
-    // VXE-Grid has duplicate headers (visible + fixed-hidden), use .first() for visible one
-    const header = this.page
-      .locator(".vxe-header--column.fixed--visible", { hasText: columnTitle })
-      .first();
+    const header = this.columnHeader(columnTitle);
     await header.click();
     await waitForRouteReady(this.page);
+  }
+
+  /** Resolve a visible sortable column header in the main VXE table. */
+  columnHeader(columnTitle: string) {
+    return this.page
+      .locator(".vxe-table--main-wrapper .vxe-header--column:visible", {
+        hasText: columnTitle,
+      })
+      .first();
   }
 
   /** Get all cell values for a column by field name */
@@ -230,7 +271,9 @@ export class UserPage {
 
   /** Get visible row count */
   async getVisibleRowCount(): Promise<number> {
-    return this.page.locator(".vxe-body--row").count();
+    return this.page
+      .locator(".vxe-table--main-wrapper .vxe-body--row:visible")
+      .count();
   }
 
   /** Fill the search form field by label */
@@ -319,10 +362,91 @@ export class UserPage {
     await waitForBusyIndicatorsToClear(this.page);
   }
 
+  /** Open the batch edit modal for selected users. */
+  async openSelectedUserBatchEdit() {
+    await this.page.getByTestId("user-batch-edit-button").click();
+    const dialog = this.page
+      .locator('[role="dialog"]')
+      .filter({ hasText: /批量编辑用户|Batch Edit Users/i })
+      .last();
+    await waitForDialogReady(dialog, UserPage.DIALOG_READY_TIMEOUT);
+    await waitForBusyIndicatorsToClear(dialog, 20000);
+    return dialog;
+  }
+
+  /** Assert batch edit switches keep the natural Ant Design switch width. */
+  async expectBatchEditSwitchesCompact(dialog: Locator) {
+    const widths = await dialog.locator(".ant-switch").evaluateAll((elements) =>
+      elements.map((element) => element.getBoundingClientRect().width),
+    );
+    expect(widths.length).toBeGreaterThanOrEqual(2);
+    for (const width of widths) {
+      expect(width).toBeLessThan(96);
+    }
+  }
+
+  /** Assert toolbar edit/delete/create actions are visually distinguishable. */
+  async expectToolbarPrimaryActionsDistinct() {
+    const editButton = this.page.getByTestId("user-batch-edit-button");
+    const deleteButton = this.page.getByTestId("user-batch-delete-button");
+    const createButton = this.page.getByTestId("user-create-button");
+
+    await expect(editButton).toHaveText(/编\s*辑|Edit/i);
+    await expect(deleteButton).toBeVisible();
+    await expect(createButton).toBeVisible();
+
+    const colors = await Promise.all(
+      [editButton, deleteButton, createButton].map((button) =>
+        button.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            backgroundColor: style.backgroundColor,
+            borderColor: style.borderColor,
+            color: style.color,
+          };
+        }),
+      ),
+    );
+    expect(
+      new Set(
+        colors.map(
+          (item) =>
+            `${item.backgroundColor}|${item.borderColor}|${item.color}`,
+        ),
+      ).size,
+    ).toBe(3);
+  }
+
+  /** Batch update selected users to a specific status label. */
+  async batchUpdateSelectedStatus(statusLabel: string) {
+    const dialog = await this.openSelectedUserBatchEdit();
+    await this.expectBatchEditSwitchesCompact(dialog);
+    const statusSwitch = dialog.getByRole("switch", {
+      name: /更新状态|Update Status/i,
+    });
+    await statusSwitch.waitFor({ state: "visible", timeout: 10000 });
+    await waitForBusyIndicatorsToClear(dialog, 20000);
+    await statusSwitch.click();
+    await dialog.getByText(statusLabel, { exact: true }).click();
+    const updatePromise = this.page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.endsWith("/user") &&
+        response.request().method() === "PUT",
+      { timeout: 30000 },
+    );
+    await dialog.getByRole("button", { name: /确\s*认|OK/i }).click();
+    await updatePromise;
+    await dialog.waitFor({ state: "hidden", timeout: 15000 });
+    await waitForBusyIndicatorsToClear(this.page);
+  }
+
   /** Click export button */
   async clickExport() {
     await this.page.getByRole("button", { name: /导\s*出/ }).click();
-    await waitForDialogReady(this.page.locator('[role="dialog"]'));
+    await waitForDialogReady(
+      this.page.locator('[role="dialog"]'),
+      UserPage.DIALOG_READY_TIMEOUT,
+    );
   }
 
   /** Click confirm button in the export confirm modal */
@@ -365,14 +489,21 @@ export class UserPage {
   /** Check if action buttons (edit/delete/more) are visible for a row */
   async hasActionButtons(username: string): Promise<boolean> {
     await this.searchByUsername(username);
-    const editBtn = this.page.getByRole("button", { name: /编\s*辑/ }).first();
-    return editBtn.isVisible({ timeout: 2000 }).catch(() => false);
+    const row = this.getUserDataRow(username);
+    await row.waitFor({ state: "visible", timeout: 10000 });
+    const actionRow = await this.getFixedActionRowForDataRow(row);
+    const actionButtons = actionRow.getByRole("button", {
+      name: /编\s*辑|Edit|删\s*除|Delete|更\s*多|More/i,
+    });
+    return (await actionButtons.count()) > 0;
   }
 
   /** Check if the status switch is disabled for a row */
   async isStatusSwitchDisabled(username: string): Promise<boolean> {
     await this.searchByUsername(username);
-    const switchEl = this.page.locator(".vxe-body--row .ant-switch").first();
+    const row = this.getUserDataRow(username);
+    await row.waitFor({ state: "visible", timeout: 10000 });
+    const switchEl = row.locator(".ant-switch").first();
     return switchEl.evaluate((el) =>
       el.classList.contains("ant-switch-disabled"),
     );
@@ -381,9 +512,9 @@ export class UserPage {
   /** Check if the row checkbox is disabled */
   async isCheckboxDisabled(username: string): Promise<boolean> {
     await this.searchByUsername(username);
-    const checkbox = this.page
-      .locator(".vxe-body--row .vxe-cell--checkbox")
-      .first();
+    const row = this.getUserDataRow(username);
+    await row.waitFor({ state: "visible", timeout: 10000 });
+    const checkbox = row.locator(".vxe-cell--checkbox").first();
     return checkbox.evaluate((el) => el.classList.contains("is--disabled"));
   }
 
@@ -393,7 +524,10 @@ export class UserPage {
       .getByRole("button", { name: /导\s*入/ })
       .first()
       .click();
-    await waitForDialogReady(this.page.locator('[role="dialog"]'));
+    await waitForDialogReady(
+      this.page.locator('[role="dialog"]'),
+      UserPage.DIALOG_READY_TIMEOUT,
+    );
   }
 
   /** Get the total count from the pager */
@@ -455,7 +589,7 @@ export class UserPage {
     await this.page.getByRole("button", { name: /新\s*增/ }).click();
     await this.waitForDrawerReady("");
 
-    await this.drawer.getByPlaceholder("请输入用户名").fill(username);
+    await this.drawerAccountInput.fill(username);
     await this.drawer.getByPlaceholder("请输入密码").fill(password);
     await this.drawer.getByPlaceholder("请输入昵称").fill(nickname);
 
@@ -478,14 +612,17 @@ export class UserPage {
     // Ensure the searched row is rendered before interacting with the fixed
     // action column. The action buttons live in a separate fixed table, but the
     // visible edit button becomes unique once the main data row is filtered.
-    await this.getUserDataRow(username).waitFor({
+    const row = this.getUserDataRow(username);
+    await row.waitFor({
       state: "visible",
       timeout: 10000,
     });
-    await this.page
-      .getByRole("button", { name: /编\s*辑/ })
-      .first()
-      .click();
+    const actionRow = await this.getFixedActionRowForDataRow(row);
+    const editButton = actionRow
+      .getByRole("button", { name: /编\s*辑|Edit/i })
+      .first();
+    await editButton.waitFor({ state: "visible", timeout: 5000 });
+    await editButton.click();
     await this.waitForDrawerReady(username);
 
     // Clear existing roles first by clicking clear button

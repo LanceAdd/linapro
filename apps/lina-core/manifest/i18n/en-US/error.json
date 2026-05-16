@@ -11,7 +11,10 @@
         "hashFailed": "Failed to hash password"
       },
       "token": {
-        "invalid": "Invalid token"
+        "invalid": "Invalid token",
+        "state": {
+          "unavailable": "Authentication token state is temporarily unavailable"
+        }
       }
     },
     "cache": {
@@ -777,8 +780,8 @@
           "manifest": {
             "required": "Source plugin manifest cannot be empty"
           },
-          "pending": "Installed source plugins have pending upgrades. Use the lina-upgrade skill through your AI tooling before host startup.\n{items}",
-          "pendingWithBulk": "Installed source plugins have pending upgrades. Use the lina-upgrade skill through your AI tooling before host startup.\n{items}\nTo process all pending source-plugin upgrades at once, ask your AI tooling: {bulkCommand}",
+          "pending": "Installed source plugins have pending upgrades. Resolve the listed source-plugin versions before host startup.\n{items}",
+          "pendingWithBulk": "Installed source plugins have pending upgrades. Resolve the listed source-plugin versions before host startup.\n{items}\nReview all pending source-plugin upgrades together: {bulkCommand}",
           "plugin": {
             "id": {
               "required": "Source plugin ID cannot be empty"
@@ -809,6 +812,26 @@
       },
       "status": {
         "invalid": "Plugin status supports only 0 or 1"
+      },
+      "tenant": {
+        "provisioning": {
+          "policy": {
+            "invalid": "Plugin {pluginId} must support multi-tenant governance and be installed in tenant_scoped mode before it can be auto-enabled for new tenants"
+          }
+        }
+      },
+      "dependency": {
+        "blocked": "Plugin {pluginId} dependency check failed: {blockers}",
+        "auto": {
+          "install": {
+            "failed": "Plugin {pluginId} automatic dependency installation failed at {failedPluginId}; installed dependencies: {installedDependencies}"
+          }
+        }
+      },
+      "reverse": {
+        "dependency": {
+          "blocked": "Plugin {pluginId} cannot be changed because installed plugins depend on it: {dependents}"
+        }
       }
     },
     "role": {
@@ -835,6 +858,18 @@
         "scope": {
           "dept": {
             "unavailable": "Department data scope requires the organization management plugin to be enabled"
+          },
+          "unsupported": "Unsupported role data scope: {scope}"
+        }
+      }
+    },
+    "tenant": {
+      "role": {
+        "all": {
+          "data": {
+            "scope": {
+              "forbidden": "Tenant roles cannot use all-data scope"
+            }
           }
         }
       }
@@ -869,6 +904,27 @@
           "unsupported": "Unsupported user data permission scope: {scope}"
         }
       },
+      "tenant": {
+        "membership": {
+          "cardinality": {
+            "exceeded": "User can only belong to one tenant in the current configuration"
+          },
+          "cross": {
+            "tenant": {
+              "denied": "Cannot assign users to another tenant in the current context"
+            }
+          },
+          "query": {
+            "failed": "Failed to query tenant membership visibility"
+          },
+          "replace": {
+            "failed": "Failed to update tenant membership"
+          },
+          "tenant": {
+            "unavailable": "Selected tenant is unavailable"
+          }
+        }
+      },
       "import": {
         "excel": {
           "parse": {
@@ -890,6 +946,24 @@
       },
       "username": {
         "exists": "Username already exists"
+      },
+      "batch": {
+        "update": {
+          "ids": {
+            "required": "Please select users to update"
+          },
+          "fields": {
+            "required": "Please select at least one user field to update"
+          },
+          "status": {
+            "required": "Please select the target user status"
+          },
+          "role": {
+            "tenant": {
+              "conflict": "Update user roles and tenant memberships in separate batch requests"
+            }
+          }
+        }
       }
     },
     "usermsg": {
@@ -949,6 +1023,9 @@
           "invalid": "Lock ticket content is invalid",
           "plugin": {
             "mismatch": "Lock ticket plugin identity does not match"
+          },
+          "tenant": {
+            "mismatch": "Lock ticket tenant identity does not match"
           },
           "resource": {
             "mismatch": "Lock ticket logical resource does not match"
@@ -1092,6 +1169,11 @@
         "authenticated": "Not signed in"
       },
       "unsupported": "Unsupported data permission scope: {scope}"
+    },
+    "session": {
+      "state": {
+        "unavailable": "Online-session state is temporarily unavailable"
+      }
     }
   },
   "validation": {

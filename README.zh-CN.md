@@ -12,7 +12,7 @@
 
 # 项目介绍
 
-`LinaPro`是一款**面向可持续交付的`AI`原生全栈框架**，将规范驱动的`AI`研发工作流、全生命周期`AI`技能体系、完整插件运行时与前后端一体化全栈设计融为一体，并内置权限管理、系统配置、任务调度等企业级基础能力，为团队构建起一套完整的`AI`原生交付底座。
+`LinaPro`是一款**面向可持续交付的`AI`原生全栈框架**，将对`OpenSpec`友好的`AI`研发工作流、全生命周期`AI`技能体系、完整插件运行时与前后端一体化全栈设计融为一体，并内置权限管理、系统配置、任务调度等企业级基础能力，为团队构建起一套完整的`AI`原生交付底座。
 
 团队无需从零搭建基础设施，从第一天起就能以`AI`作为主力驱动业务开发和持续交付。
 
@@ -30,7 +30,7 @@
 `LinaPro`面向独立开发者、研发团队和企业，提供以下核心能力：
 
 - **AI 原生研发工作流**：内置`OpenSpec`规范驱动工作流，让`AI`主导分析、设计与实现，每次变更均锚定在增量规范与强制`E2E`测试上，团队专注于方向决策
-- **丰富的 AI 技能体系**：内置十余项覆盖研发全生命周期的专属`AI`技能，涵盖后端开发、前端设计、测试编写、代码审查、性能审计、版本升级等场景，让`AI`在每个具体工作环节都能做出符合框架约束的专业决策
+- **丰富的 AI 技能体系**：内置十余项覆盖研发全生命周期的专属`AI`技能，涵盖后端开发、前端设计、测试编写、代码审查、性能审计等场景，让`AI`在每个具体工作环节都能做出符合框架约束的专业决策
 - **快速业务开发**：开箱即用的管理工作台与丰富的内置模块，显著缩短项目从零到上线的时间
 - **全栈一体化**：前后端统一设计，接口契约、权限模型与设计规范完全对齐，无需独立集成两套框架
 - **完整 API 文档**：自动聚合宿主与所有插件接口，支持在线浏览与调试
@@ -42,7 +42,7 @@
 
 ```mermaid
 graph TB
-    subgraph Workflow["AI 研发工作流  openspec/"]
+    subgraph Workflow["可选 AI 研发工作流  openspec/"]
         direction LR
         Explore["🔍 探索"] --> Propose["📋 提案"] --> Implement["⚙️ 实现"] --> Review["🔎 审查"] --> Archive["📦 归档"]
     end
@@ -84,16 +84,16 @@ graph TB
 
 ## AI 原生研发工作流
 
-`LinaPro`内置`OpenSpec`规范驱动工作流，覆盖从需求到交付的完整闭环：
+`LinaPro`内置对`OpenSpec`的良好支持。`OpenSpec`是可选但推荐的规范驱动工作流，可覆盖从需求到交付的完整闭环：
 
-- 探索 → 提案 → 实现 → 审查 → 归档，每次迭代经历完整的五阶段闭环
-- 每次变更均锚定在增量规范文件与强制`E2E`测试上，防止架构漂移和测试空洞
-- `AI`始终基于已验证的基础向前推进，而不是凭空生成代码
+- 项目不安装`OpenSpec`也可以运行；采用后可按探索 → 提案 → 实现 → 审查 → 归档的五阶段闭环推进
+- 变更可以锚定在增量规范文件与匹配的自动化测试上，防止架构漂移和测试空洞，同时不让`OpenSpec`成为运行时依赖
+- `AI`可以基于已验证的基础向前推进，而不是凭空生成代码
 - 开发者扮演方向引导者与关键决策者，需求分析、设计、实现与测试由`AI`在规范约束下完成
 
 ## 丰富的 AI 技能体系
 
-`LinaPro`内置十余项覆盖研发全生命周期的`AI`专属技能，涵盖后端开发、前端设计、测试保障、代码审查、性能审计、版本管理等场景。这些技能以领域知识的形式内嵌于框架的`AI`协作规范中，无需额外安装，`AI`工具在处理对应场景时会自动激活，让`AI`在每个具体工作环节都能做出符合框架约束的专业决策，而无需在每次对话中重复向`AI`解释项目规范。
+`LinaPro`内置十余项覆盖研发全生命周期的`AI`专属技能，涵盖后端开发、前端设计、测试保障、代码审查、性能审计等场景。这些技能以领域知识的形式内嵌于框架的`AI`协作规范中，无需额外安装，`AI`工具在处理对应场景时会自动激活，让`AI`在每个具体工作环节都能做出符合框架约束的专业决策，而无需在每次对话中重复向`AI`解释项目规范。
 
 
 ## 宿主与工作台解耦设计
@@ -123,6 +123,23 @@ graph TB
 - 插件运行在独立隔离的沙箱，数据库与文件访问均通过命名空间隔离，插件间互不干扰
 - 每个插件可独立声明`API`路由、业务逻辑、数据库表结构、前端页面与菜单，自包含零侵入
 
+## 官方插件工作区
+
+官方源码插件放在独立仓库中，并通过 `apps/lina-plugins` 作为 `submodule` 挂载到宿主，远端地址为 `https://github.com/linaproai/official-plugins.git`。
+
+- 克隆主仓库后执行 `git submodule update --init --recursive` 初始化
+- `host-only` 命令在未初始化 `submodule` 时也可以运行
+- `make dev`、`make build`、`make image` 和 `make image.build` 会在 `apps/lina-plugins` 存在插件清单时自动启用插件完整模式；如需强制宿主模式，可传入 `plugins=0`
+- 插件完整模式会基于宿主专用的根目录 `go.work` 自动生成或刷新已忽略的 `temp/go.work.plugins`，并通过 `GOWORK` 使用该临时 `workspace`
+- 插件专属测试和插件 `E2E` 需要先初始化 `submodule`
+
+如果用户项目希望把插件源码直接维护在自己的业务仓库中，应将 `apps/lina-plugins` 转换为普通目录，而不是继续保留官方 `submodule`。在 `hack/config.yaml` 的 `plugins.sources` 下配置插件来源后，可使用：
+
+- `make plugins.init`：将 `apps/lina-plugins` 从 `submodule` 元数据中脱离，并保留已有插件代码
+- `make plugins.install`：把配置中的插件安装到 `apps/lina-plugins/<plugin-id>`
+- `make plugins.update`：更新配置中的插件；存在本地改动时默认阻断，除非传入 `force=1`
+- `make plugins.status`：检查工作区类型、插件版本、本地改动、锁定状态和远端更新状态
+
 ## 企业级安全认证
 
 - `JWT`认证配合声明式`RBAC`权限体系，权限通过`API`定义层的标签声明，天然可见可审计
@@ -150,6 +167,23 @@ graph TB
 - 支持单机或分布式集群两种部署模式，水平扩展无需改造业务代码
 - 底层内置支持分布式锁与键值缓存机制，核心组件支持集群自动感知
 - 定时任务调度子系统具备分布式感知能力，集群环境下自动避免重复执行
+- 单机模式不需要`Redis`；当`cluster.enabled=true`时，宿主启动前必须配置`cluster.coordination: redis`和可连通的`cluster.redis`端点。当前协调后端仅支持`Redis`，配置形态为后续扩展其他后端预留。
+- 可选`Redis`集成测试默认不启用。如需运行依赖真实`Redis`的测试，请设置`LINA_TEST_REDIS_ADDR`，例如`LINA_TEST_REDIS_ADDR=127.0.0.1:6379`。
+
+## 多租户基础能力
+
+`LinaPro`正在扩展基于`Pool`模型的多租户能力，同时保留默认单租户开箱体验。未安装或未启用`multi-tenant`插件时，宿主与插件数据统一使用`tenant_id = 0`，表示`PLATFORM`平台租户。
+
+启用`multi-tenant`插件后：
+
+- 租户身份通过内置责任链解析：`override`、`jwt`、`session`、`header`、`subdomain`和`default`；支持的运行时策略变更由插件持久化，不再通过宿主配置模板维护。
+- 隔离模型由代码默认值维护，当前固定为`pool`。
+- 用户与租户基数由代码默认值维护，默认`multi`，允许一个用户加入多个租户。
+- 插件需要在`plugin.yaml`中声明`scope_nature`、`supports_multi_tenant`和`default_install_mode`；新租户自动启用策略由平台插件注册表维护，不由清单声明。
+- `platform_only`插件按平台全局治理，`tenant_aware`插件可选择全局启用或按租户独立启用。
+- `LifecycleGuard`钩子可否决插件禁用或卸载，`plugin.allowForceUninstall`控制平台管理员是否允许执行带审计的强制覆盖。
+
+典型内部`BU`场景使用内置`multi`基数、`prompt`歧义处理，并对审计或内容类插件采用租户级启用。当前迭代仅支持`Pool`模型；`rootDomain`预留给后续设置入口，当前暂不支持配置。schema-per-tenant、database-per-tenant、配额、计费与品牌定制留作后续演进。
 
 
 
@@ -194,9 +228,34 @@ corepack enable
 cd apps/lina-vben
 pnpm install
 cd ../..
+cd hack/tools/linactl
+go run . init confirm=init
+go run . mock confirm=mock
+go run . dev
+```
+
+`Linux`和`macOS`用户可以继续使用兼容`Makefile`入口：
+
+```bash
 make init confirm=init
 make mock confirm=mock
 make dev
+```
+
+`Windows`用户可以使用上面的跨平台`Go`入口。仓库根目录也提供`cmd.exe`薄包装入口`make.cmd`；在`cmd.exe`中会按可执行文件扩展名查找当前目录脚本，因此可直接省略`.cmd`后缀使用`make`：
+
+```cmd
+make init confirm=init
+make mock confirm=mock
+make dev
+```
+
+在`PowerShell`中，需要使用当前目录前缀调用；默认`Windows`环境下也可以省略`.cmd`后缀写成`.\make`。如需避免与本机已安装的其他`make`命令混淆，可使用`.\make.cmd`：
+
+```powershell
+.\make init confirm=init
+.\make mock confirm=mock
+.\make dev
 ```
 
 默认后端连接为：
@@ -207,9 +266,9 @@ database:
     link: "pgsql:postgres:postgres@tcp(127.0.0.1:5432)/linapro?sslmode=disable"
 ```
 
-`make init`是运维初始化命令，会直接使用配置中的数据库账号。该账号必须具备连接系统库、创建和删除目标数据库、终止目标库连接、建表、建索引、写入注释和写入`Seed`数据的权限。权限不足时初始化会失败，不会降级到低权限运行时模式。
+`linactl init`和`make init`是运维初始化命令，会直接使用配置中的数据库账号。该账号必须具备连接系统库、创建和删除目标数据库、终止目标库连接、建表、建索引、写入注释和写入`Seed`数据的权限。权限不足时初始化会失败，不会降级到低权限运行时模式。
 
-使用外部托管`PostgreSQL`，例如`RDS`或阿里云`PolarDB`时，请将`database.default.link`指向供应商提供的主机和端口。执行`make init`时使用具备上述权限的初始化账号；如果部署流程需要运行时低权限账号，请在初始化完成后再替换运行配置。
+使用外部托管`PostgreSQL`，例如`RDS`或阿里云`PolarDB`时，请将`database.default.link`指向供应商提供的主机和端口。执行`linactl init`或`make init`时使用具备上述权限的初始化账号；如果部署流程需要运行时低权限账号，请在初始化完成后再替换运行配置。
 
 如需单节点开发演示，可切换为`SQLite`链接：
 

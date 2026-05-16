@@ -11,11 +11,18 @@ import (
 func (c *ControllerV1) Install(ctx context.Context, req *v1.InstallReq) (res *v1.InstallRes, err error) {
 	options := pluginsvc.InstallOptions{
 		Authorization:   buildAuthorizationInput(req.Authorization),
+		InstallMode:     req.InstallMode,
 		InstallMockData: req.InstallMockData,
 	}
-	if err = c.pluginSvc.Install(ctx, req.Id, options); err != nil {
+	dependencyCheck, err := c.pluginSvc.Install(ctx, req.Id, options)
+	if err != nil {
 		return nil, err
 	}
 	c.roleSvc.NotifyAccessTopologyChanged(ctx)
-	return &v1.InstallRes{Id: req.Id, Installed: 1, Enabled: 0}, nil
+	return &v1.InstallRes{
+		Id:              req.Id,
+		Installed:       1,
+		Enabled:         0,
+		DependencyCheck: buildPluginDependencyCheckResult(dependencyCheck),
+	}, nil
 }

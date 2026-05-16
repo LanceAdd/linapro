@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { test, expect } from "../../fixtures/auth";
 import { ensureSourcePluginEnabled } from "../../fixtures/plugin";
-import { NoticePage } from "../../pages/NoticePage";
+import { NoticePage } from "../../../../apps/lina-plugins/content-notice/hack/tests/pages/NoticePage";
 import { PluginPage } from "../../pages/PluginPage";
 import {
   createAdminApiContext,
@@ -37,7 +37,7 @@ let originalEnabled = 0;
 
 function ensureRuntimePluginArtifact() {
   execFileSync("make", ["wasm", `p=${pluginID}`, "out=../../temp/output"], {
-    cwd: path.join(repoRoot, "apps", "lina-plugins"),
+    cwd: repoRoot,
     stdio: "inherit",
   });
   rmSync(legacyRuntimeArtifactPath, { force: true });

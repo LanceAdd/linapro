@@ -8,25 +8,46 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	v1 "lina-core/api/i18n/v1"
 	"lina-core/internal/model"
+	"lina-core/internal/service/auth"
+	"lina-core/internal/service/bizctx"
+	"lina-core/internal/service/cachecoord"
+	"lina-core/internal/service/cluster"
+	hostconfig "lina-core/internal/service/config"
+	"lina-core/internal/service/datascope"
 	i18nsvc "lina-core/internal/service/i18n"
+	"lina-core/internal/service/kvcache"
 	middlewaresvc "lina-core/internal/service/middleware"
+	"lina-core/internal/service/orgcap"
+	pluginsvc "lina-core/internal/service/plugin"
+	"lina-core/internal/service/role"
+	"lina-core/internal/service/session"
+	tenantcapsvc "lina-core/internal/service/tenantcap"
 
-	_ "lina-core/pkg/dbdriver"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/gctx"
+	_ "lina-core/pkg/dbdriver"
 )
+
+// newTestI18nService creates a standalone i18n service for tests.
+func newTestI18nService() i18nsvc.Service {
+	configSvc := hostconfig.New()
+	bizCtxSvc := bizctx.New()
+	clusterSvc := cluster.New(configSvc.GetCluster(context.Background()))
+	return i18nsvc.New(bizCtxSvc, configSvc, cachecoord.Default(clusterSvc))
+}
 
 // TestRuntimeMessagesUsesExplicitLangOverride verifies that the runtime
 // messages endpoint honors the explicit lang query parameter.
 func TestRuntimeMessagesUsesExplicitLangOverride(t *testing.T) {
 	t.Parallel()
 
-	i18nSvc := i18nsvc.New()
+	i18nSvc := newTestI18nService()
 	controller := &ControllerV1{
 		localeResolver: i18nSvc,
 		bundleProvider: i18nSvc,
@@ -60,7 +81,7 @@ func TestRuntimeMessagesUsesExplicitLangOverride(t *testing.T) {
 func TestRuntimeLocalesReturnsLocalizedDescriptors(t *testing.T) {
 	t.Parallel()
 
-	i18nSvc := i18nsvc.New()
+	i18nSvc := newTestI18nService()
 	controller := &ControllerV1{
 		localeResolver: i18nSvc,
 		bundleProvider: i18nSvc,
@@ -135,6 +156,11 @@ func TestRuntimeLocalesReturnsDisabledDefaultOnly(t *testing.T) {
 // response-shape tests.
 type disabledRuntimeLocaleService struct{}
 
+const (
+	// disabledRuntimeBundleFingerprint is a stable fake fingerprint for tests.
+	disabledRuntimeBundleFingerprint = "00000000000000000000000000000000"
+)
+
 // ResolveRequestLocale always returns the configured default locale.
 func (disabledRuntimeLocaleService) ResolveRequestLocale(_ *ghttp.Request) string {
 	return i18nsvc.DefaultLocale
@@ -153,6 +179,14 @@ func (disabledRuntimeLocaleService) GetLocale(_ context.Context) string {
 // EnsureRuntimeBundleCacheFresh is a no-op for the disabled-locale fake.
 func (disabledRuntimeLocaleService) EnsureRuntimeBundleCacheFresh(_ context.Context) error {
 	return nil
+}
+
+// BundleRevision returns a stable fake bundle revision.
+func (disabledRuntimeLocaleService) BundleRevision(_ string) i18nsvc.RuntimeBundleRevision {
+	return i18nsvc.RuntimeBundleRevision{
+		Version:     1,
+		Fingerprint: disabledRuntimeBundleFingerprint,
+	}
 }
 
 // BundleVersion returns a stable fake bundle version.
@@ -183,6 +217,36 @@ func (disabledRuntimeLocaleService) BuildRuntimeMessages(_ context.Context, _ st
 	return map[string]interface{}{}
 }
 
+// countingRuntimeLocaleService records runtime bundle builds for ETag tests.
+type countingRuntimeLocaleService struct {
+	disabledRuntimeLocaleService
+
+	revision   i18nsvc.RuntimeBundleRevision
+	buildCount atomic.Int64
+}
+
+// BundleRevision returns the configured fake runtime bundle revision.
+func (s *countingRuntimeLocaleService) BundleRevision(_ string) i18nsvc.RuntimeBundleRevision {
+	return s.revision
+}
+
+// BundleVersion returns the configured fake runtime bundle version.
+func (s *countingRuntimeLocaleService) BundleVersion(_ string) uint64 {
+	return s.revision.Version
+}
+
+// BuildRuntimeMessages records that a full response body was built.
+func (s *countingRuntimeLocaleService) BuildRuntimeMessages(_ context.Context, _ string) map[string]interface{} {
+	s.buildCount.Add(1)
+	return map[string]interface{}{
+		"app": map[string]interface{}{
+			"sample": map[string]interface{}{
+				"title": "Sample",
+			},
+		},
+	}
+}
+
 // lookupRuntimeMessage reads one dotted runtime message path from the nested response payload.
 func lookupRuntimeMessage(messages map[string]interface{}, key string) (string, bool) {
 	current := interface{}(messages)
@@ -210,19 +274,24 @@ func findRuntimeLocale(items []v1.RuntimeLocaleItem, locale string) (v1.RuntimeL
 	return v1.RuntimeLocaleItem{}, false
 }
 
-// TestBuildRuntimeMessagesETagFormatsLocaleAndVersion verifies that the strong
-// ETag format used by the runtime messages endpoint is `"<locale>-<version>"`.
-func TestBuildRuntimeMessagesETagFormatsLocaleAndVersion(t *testing.T) {
+// TestBuildRuntimeMessagesETagUsesBundleRevision verifies that the strong ETag
+// formats the cache-owned version and content fingerprint.
+func TestBuildRuntimeMessagesETagUsesBundleRevision(t *testing.T) {
 	t.Parallel()
 
-	got := buildRuntimeMessagesETag(i18nsvc.EnglishLocale, 42)
-	if got != `"en-US-42"` {
-		t.Fatalf("expected ETag %q, got %q", `"en-US-42"`, got)
+	revision := i18nsvc.RuntimeBundleRevision{
+		Version:     42,
+		Fingerprint: "0123456789abcdef0123456789abcdef",
 	}
-
-	got = buildRuntimeMessagesETag(i18nsvc.DefaultLocale, 0)
-	if got != `"zh-CN-0"` {
-		t.Fatalf("expected ETag %q, got %q", `"zh-CN-0"`, got)
+	got, ok := buildRuntimeMessagesETag(i18nsvc.EnglishLocale, revision)
+	if !ok {
+		t.Fatal("expected non-empty fingerprint to produce an ETag")
+	}
+	if got != `"en-US-42-0123456789abcdef0123456789abcdef"` {
+		t.Fatalf("expected ETag to include locale, version and fingerprint, got %q", got)
+	}
+	if empty, ok := buildRuntimeMessagesETag(i18nsvc.EnglishLocale, i18nsvc.RuntimeBundleRevision{}); ok || empty != "" {
+		t.Fatalf("expected empty fingerprint to skip ETag, got ok=%v value=%q", ok, empty)
 	}
 }
 
@@ -320,7 +389,7 @@ func TestRuntimeMessagesEmitsETagAndShortCircuits304(t *testing.T) {
 
 	// Invalidate the host sector so the bundle version advances; the same
 	// If-None-Match should now miss and a fresh 200 must arrive.
-	i18nsvc.New().InvalidateRuntimeBundleCache(i18nsvc.InvalidateScope{
+	newTestI18nService().InvalidateRuntimeBundleCache(i18nsvc.InvalidateScope{
 		Locales: []string{i18nsvc.EnglishLocale},
 		Sectors: []i18nsvc.Sector{i18nsvc.SectorHost},
 	})
@@ -344,9 +413,64 @@ func TestRuntimeMessagesEmitsETagAndShortCircuits304(t *testing.T) {
 	}
 }
 
+// TestRuntimeMessagesWarmETagSkipsBundleBuild proves the 304 warm-cache path
+// does not build the nested runtime message response body.
+func TestRuntimeMessagesWarmETagSkipsBundleBuild(t *testing.T) {
+	bundleSvc := &countingRuntimeLocaleService{
+		revision: i18nsvc.RuntimeBundleRevision{
+			Version:     7,
+			Fingerprint: "abcdef0123456789abcdef0123456789",
+		},
+	}
+	controller := &ControllerV1{
+		localeResolver: bundleSvc,
+		bundleProvider: bundleSvc,
+	}
+	address := startRuntimeMessagesControllerTestServer(t, controller)
+	etag, ok := buildRuntimeMessagesETag(i18nsvc.DefaultLocale, bundleSvc.revision)
+	if !ok {
+		t.Fatal("expected fake revision to produce an ETag")
+	}
+
+	request, err := http.NewRequest(http.MethodGet, address+"/i18n/runtime/messages?lang="+i18nsvc.DefaultLocale, nil)
+	if err != nil {
+		t.Fatalf("create warm-cache request: %v", err)
+	}
+	request.Header.Set(runtimeMessagesIfNoneMatchHeader, etag)
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("warm-cache request: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNotModified {
+		t.Fatalf("expected warm-cache request status 304, got %d", response.StatusCode)
+	}
+	if response.Header.Get(runtimeMessagesETagHeader) != etag {
+		t.Fatalf("expected 304 to echo ETag %q, got %q", etag, response.Header.Get(runtimeMessagesETagHeader))
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read warm-cache body: %v", err)
+	}
+	if len(body) != 0 {
+		t.Fatalf("expected empty body on warm-cache 304, got %d bytes", len(body))
+	}
+	if got := bundleSvc.buildCount.Load(); got != 0 {
+		t.Fatalf("expected warm-cache 304 to skip BuildRuntimeMessages, got %d calls", got)
+	}
+}
+
 // startRuntimeMessagesTestServer wires the runtime i18n controller with the
 // host response middleware on a randomly chosen port and returns the base URL.
 func startRuntimeMessagesTestServer(t *testing.T) string {
+	t.Helper()
+	return startRuntimeMessagesControllerTestServer(t, NewV1(newTestI18nService()))
+}
+
+// startRuntimeMessagesControllerTestServer wires a supplied runtime i18n
+// controller with the host response middleware for endpoint-level tests.
+func startRuntimeMessagesControllerTestServer(t *testing.T, controller any) string {
 	t.Helper()
 
 	serverName := "i18n-runtime-test-" + strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -354,10 +478,10 @@ func startRuntimeMessagesTestServer(t *testing.T) string {
 	server.SetPort(0)
 	server.SetDumpRouterMap(false)
 
-	middlewareSvc := middlewaresvc.New()
+	middlewareSvc := newRuntimeMessagesTestMiddleware()
 	server.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(middlewareSvc.Response)
-		group.Bind(NewV1())
+		group.Bind(controller)
 	})
 
 	if err := server.Start(); err != nil {
@@ -374,4 +498,20 @@ func startRuntimeMessagesTestServer(t *testing.T) string {
 		t.Fatal("expected randomly allocated port to be positive")
 	}
 	return "http://127.0.0.1:" + strconv.Itoa(listenedPort)
+}
+
+// newRuntimeMessagesTestMiddleware constructs response middleware with
+// explicit dependencies so controller tests do not rely on disabled defaults.
+func newRuntimeMessagesTestMiddleware() middlewaresvc.Service {
+	configSvc := hostconfig.New()
+	bizCtxSvc := bizctx.New()
+	i18nSvc := newTestI18nService()
+	cacheCoordSvc := cachecoord.Default(nil)
+	pluginSvc := pluginsvc.New(nil, configSvc, bizCtxSvc, cacheCoordSvc, i18nSvc, session.NewDBStore())
+	orgCapSvc := orgcap.New(pluginSvc)
+	tenantSvc := tenantcapsvc.New(pluginSvc, nil)
+	roleSvc := role.New(pluginSvc, bizCtxSvc, configSvc, i18nSvc, nil, orgCapSvc, tenantSvc)
+	roleSvc.SetDataScopeService(datascope.New(bizCtxSvc, roleSvc, orgCapSvc))
+	authSvc := auth.New(configSvc, pluginSvc, orgCapSvc, roleSvc, tenantSvc, session.NewDBStore(), kvcache.New())
+	return middlewaresvc.New(authSvc, bizCtxSvc, configSvc, i18nSvc, pluginSvc, roleSvc, tenantSvc)
 }

@@ -89,18 +89,39 @@ database:
 
 `SQLite` mode is single-node only, automatically forces `cluster.enabled=false`, and is not supported for production deployments.
 
+## Cluster Coordination
+
+Single-node deployments keep the lightweight local mode: they do not require `Redis`, do not connect to `Redis`, and continue to use PostgreSQL plus process-local cache coordination where appropriate.
+
+Clustered deployments must configure the Redis coordination backend explicitly:
+
+```yaml
+cluster:
+  enabled: true
+  coordination: redis
+  redis:
+    address: "127.0.0.1:6379"
+    db: 0
+    password: ""
+    connectTimeout: 3s
+    readTimeout: 2s
+    writeTimeout: 2s
+```
+
+The current backend only supports `redis`. The scalar `cluster.coordination` setting is intentionally stable so future backends can be added without exposing per-store coordination switches. Redis integration tests are opt-in; set `LINA_TEST_REDIS_ADDR`, for example `LINA_TEST_REDIS_ADDR=127.0.0.1:6379`, before running the Redis-specific Go test cases.
+
 ## Source Plugin Upgrade
 
 Source plugins now follow an explicit development-time upgrade flow instead of
 silently switching versions during startup.
 
-- Host startup scans source plugins first, but if an installed source plugin still has a higher discovered `plugin.yaml` version than the effective `sys_plugin.version`, startup fails fast until the upgrade command has been completed.
-- Use the `lina-upgrade` AI skill through your AI tooling to upgrade one plugin, for example: `upgrade source plugin plugin-demo-source`.
-- Use `upgrade all source plugins` through the same skill to process every installed source plugin with a newer discovered version.
-- Dynamic plugins keep their existing runtime-managed `upload + install/reconcile` upgrade model and are not handled by the development-time skill.
+- Host startup scans source plugins first, but if an installed source plugin still has a higher discovered `plugin.yaml` version than the effective `sys_plugin.version`, startup fails fast until the version drift has been resolved.
+- Use the supported plugin workspace update flow to refresh source-plugin code before startup.
+- Process every installed source plugin with a newer discovered version before starting the host.
+- Dynamic plugins keep their existing runtime-managed `upload + install/reconcile` upgrade model.
 
 ## Related Entry Points
 
-- `manifest/sql/014-scheduled-job-management.sql`: scheduled-job schema, seed data, menus, and dictionaries.
+- `manifest/sql/011-scheduled-job-management.sql`: scheduled-job schema, seed data, menus, and dictionaries.
 - `internal/cmd/cmd_http.go`: host wiring for job, job-group, job-log, and job-handler APIs.
 - `internal/service/cron/cron.go`: host cron startup entrypoint.

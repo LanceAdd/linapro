@@ -16,16 +16,30 @@ hack/tests/
   temp/          运行时产物，例如生成的 storage state
 ```
 
+源码插件可以把自己的测试面保留在插件目录内：
+
+```text
+apps/lina-plugins/<plugin-id>/
+  hack/tests/e2e/       插件自有 TC 测试用例
+  hack/tests/pages/     插件自有页面对象
+  hack/tests/support/   可选的插件自有 E2E helper
+```
+
 `e2e/` 目录不再沿用历史上的 `system/` 大目录，而是按稳定能力边界组织：
 
 - `auth/`、`dashboard/`、`about/`
 - `iam/`
 - `settings/`
-- `org/`
-- `content/`
-- `monitor/`
 - `scheduler/`
 - `extension/`
+
+源码插件自有业务覆盖不再放在宿主 `e2e/` 树下，而是保留在对应插件目录：
+
+- `plugins/content-notice` 映射到 `apps/lina-plugins/content-notice/hack/tests/e2e/`
+- `plugins/content-notice/message` 映射到 content-notice 插件自有消息中心覆盖
+- `plugins/multi-tenant` 映射到 `apps/lina-plugins/multi-tenant/hack/tests/e2e/`
+- `plugins/org-center` 映射到 `apps/lina-plugins/org-center/hack/tests/e2e/`
+- `plugins/monitor-*` 映射到对应监控插件的 `hack/tests/e2e/`
 
 ## 命名规则
 
@@ -55,6 +69,8 @@ hack/tests/
 - `scheduler:job`
 - `extension:plugin`
 - `dialect`
+- `plugins`
+- `plugin:<plugin-id>`，用于运行 `apps/lina-plugins/<plugin-id>/hack/tests/e2e/` 下的源码插件测试
 
 `pnpm test:sqlite` 是完整 SQLite 专用通道。脚本会先备份
 `apps/lina-core/manifest/config/config.yaml`，再把
@@ -76,6 +92,16 @@ hack/tests/
 `pnpm test`、`pnpm test:full`、`pnpm test:smoke` 与 `pnpm test:module` 都通过 `scripts/run-suite.mjs` 执行。
 运行器会把选中的文件拆分为并行池与串行池，使高共享状态场景仍能安全执行。
 每次执行都会打印选中文件数、并行文件数、串行文件数、并行 worker 数，以及串行池覆盖的隔离类别摘要。
+完整套件会通过通用 `plugins` 入口包含插件自有测试。
+单个源码插件可以不修改 manifest 直接运行：
+
+```bash
+pnpm test:module -- plugin:cms
+```
+
+```bash
+pnpm test:module -- plugin:multi-tenant
+```
 
 ## 隔离类别
 
@@ -113,6 +139,35 @@ hack/tests/
 大多数后台已登录测试会复用预生成的管理员 `storageState`。
 该文件由 `global-setup.ts` 在每轮执行前重新生成，并写入 `temp/storage-state/admin.json`。
 认证主题用例在需要直接验证登录行为时，仍然保留真实登录链路。
+
+## 用户流程测试
+
+`CRUD`和其他用户可见工作流应按真实工作台交互编写，而不是只做接口级检查。
+通过页面对象点击可见按钮、填写带标签的表单控件、操作弹窗、选择表格行、确认危险操作，并断言页面最终状态。
+
+定位器优先使用面向可访问性和用户可见内容的 `getByRole`、`getByLabel`、`getByText`；当组件无法提供稳定可访问名称时，再使用稳定的 `data-testid`。
+直接调用接口或数据库 helper 适合用于 fixture 前置准备、清理数据，以及构造难以从页面到达的边界状态；但被验证的行为通常应通过`UI`完成。
+
+管理页面的`CRUD`覆盖应在功能相关时包含以下主路径：
+
+- 页面加载且表格就绪
+- 搜索与重置
+- 通过可见表单创建数据
+- 从列表中查询到新数据
+- 通过可见操作编辑数据
+- 通过真实确认控件删除数据
+- 验证列表中不再显示该数据
+- 当功能拥有对应边界时，验证必填、唯一性或权限控制
+
+截图是诊断产物，不应作为`CRUD`正确性的主要断言。
+应优先断言用户可观察的业务结果，例如成功提示、表格行、字段值、空状态、按钮隐藏或禁用，以及导入导出场景中的网络响应。
+
+## 失败产物
+
+当测试失败时，`Playwright`会保留`screenshot`、`trace`和`video`产物。
+使用`pnpm report`查看`HTML`报告，并打开`trace`检查准确的点击序列、`DOM`快照、控制台输出和网络活动。
+
+套件在`CI`中默认重试一次；本地可通过`E2E_RETRIES`控制重试次数。
 
 ## 等待策略
 

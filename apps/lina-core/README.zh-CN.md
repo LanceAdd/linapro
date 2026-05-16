@@ -89,17 +89,38 @@ database:
 
 `SQLite`模式仅支持单节点，会自动强制`cluster.enabled=false`，不支持生产部署。
 
+## 集群协调
+
+单机部署保持轻量本地模式：不需要`Redis`，不会连接`Redis`，并在适用场景继续使用`PostgreSQL`和进程内缓存协调。
+
+集群部署必须显式配置`Redis`协调后端：
+
+```yaml
+cluster:
+  enabled: true
+  coordination: redis
+  redis:
+    address: "127.0.0.1:6379"
+    db: 0
+    password: ""
+    connectTimeout: 3s
+    readTimeout: 2s
+    writeTimeout: 2s
+```
+
+当前后端仅支持`redis`。`cluster.coordination`使用稳定的标量配置，便于后续扩展其他协调后端，而不暴露按存储类型拆分的协调开关。`Redis`集成测试默认不启用；运行依赖真实`Redis`的`Go`测试前，请设置`LINA_TEST_REDIS_ADDR`，例如`LINA_TEST_REDIS_ADDR=127.0.0.1:6379`。
+
 ## 源码插件升级
 
 源码插件现在采用显式的开发阶段升级流程，不再允许在宿主启动期间静默切换版本。
 
-- 宿主启动前会先扫描源码插件；如果某个已安装源码插件的 `plugin.yaml` 发现版本高于当前生效的 `sys_plugin.version`，启动会直接失败，直到显式升级命令执行完成。
-- 通过 AI 工具调用 `lina-upgrade` 技能升级单个插件，例如：`upgrade source plugin plugin-demo-source`。
-- 通过同一技能执行 `upgrade all source plugins`，可批量处理全部已安装且发现了更高版本的源码插件。
-- 动态插件继续使用现有的运行时 `upload + install/reconcile` 升级模型，不纳入开发态升级技能。
+- 宿主启动前会先扫描源码插件；如果某个已安装源码插件的 `plugin.yaml` 发现版本高于当前生效的 `sys_plugin.version`，启动会直接失败，直到版本差异处理完成。
+- 通过受支持的插件工作区更新流程刷新源码插件代码，再启动宿主。
+- 宿主启动前需要处理所有已安装且发现了更高版本的源码插件。
+- 动态插件继续使用现有的运行时 `upload + install/reconcile` 升级模型。
 
 ## 相关入口
 
-- `manifest/sql/014-scheduled-job-management.sql`：定时任务的表结构、种子数据、菜单权限与字典定义。
+- `manifest/sql/011-scheduled-job-management.sql`：定时任务的表结构、种子数据、菜单权限与字典定义。
 - `internal/cmd/cmd_http.go`：任务、分组、日志、处理器接口的宿主装配入口。
 - `internal/service/cron/cron.go`：宿主定时任务启动入口。

@@ -17,6 +17,7 @@ import { message } from 'ant-design-vue';
 
 import { $t } from '#/locales';
 import { useAuthStore } from '#/store';
+import { useTenantStore } from '#/store/tenant';
 
 const { apiURL } = useAppConfig(import.meta.env, import.meta.env.PROD);
 
@@ -26,6 +27,16 @@ type RuntimeErrorResponse = {
   messageKey?: string;
   messageParams?: Record<string, unknown>;
 };
+
+type RefreshTokenEnvelope = RuntimeErrorResponse & {
+  code?: number;
+  data?: {
+    accessToken?: string;
+    refreshToken?: string;
+  };
+};
+
+const refreshRequestClient = new RequestClient({ baseURL: apiURL });
 
 function resolveRequestLocale() {
   if (typeof document === 'undefined') {
@@ -59,21 +70,42 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
     const accessStore = useAccessStore();
     const authStore = useAuthStore();
     accessStore.setAccessToken(null);
+    accessStore.setRefreshToken(null);
     if (
       preferences.app.loginExpiredMode === 'modal' &&
       accessStore.isAccessChecked
     ) {
       accessStore.setLoginExpired(true);
     } else {
-      await authStore.logout();
+      await authStore.clearSession();
     }
   }
 
-  /**
-   * Token refresh is not supported; re-authenticate directly.
-   */
   async function doRefreshToken() {
-    return '';
+    const accessStore = useAccessStore();
+    const refreshToken = accessStore.refreshToken;
+    if (!refreshToken) {
+      throw new Error('Missing refresh token');
+    }
+
+    const response = await refreshRequestClient.instance.post<RefreshTokenEnvelope>(
+      '/auth/refresh',
+      { refreshToken },
+      {
+        headers: {
+          'Accept-Language': resolveRequestLocale(),
+        },
+      },
+    );
+    const responseData = response.data;
+    const nextAccessToken = responseData?.data?.accessToken;
+    if (responseData?.code !== 0 || !nextAccessToken) {
+      throw new Error(resolveRuntimeErrorMessage(responseData) || 'Refresh token failed');
+    }
+
+    accessStore.setAccessToken(nextAccessToken);
+    accessStore.setRefreshToken(responseData.data?.refreshToken || refreshToken);
+    return nextAccessToken;
   }
 
   function formatToken(token: null | string) {
@@ -84,9 +116,13 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
   client.addRequestInterceptor({
     fulfilled: async (config) => {
       const accessStore = useAccessStore();
+      const tenantStore = useTenantStore();
 
       config.headers.Authorization = formatToken(accessStore.accessToken);
       config.headers['Accept-Language'] = resolveRequestLocale();
+      if (tenantStore.enabled && tenantStore.currentTenant?.code) {
+        config.headers['X-Tenant-Code'] = tenantStore.currentTenant.code;
+      }
       return config;
     },
   });
@@ -106,7 +142,7 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
       client,
       doReAuthenticate,
       doRefreshToken,
-      enableRefreshToken: false,
+      enableRefreshToken: preferences.app.enableRefreshToken,
       formatToken,
     }),
   );

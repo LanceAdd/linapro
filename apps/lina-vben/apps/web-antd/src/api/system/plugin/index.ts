@@ -1,5 +1,7 @@
 import type {
   PluginAuthorizationPayload,
+  PluginDependencyCheckResult,
+  PluginInstallResult,
   PluginListParams,
   PluginDynamicState,
   PluginUploadDynamicResult,
@@ -7,6 +9,15 @@ import type {
 } from './model';
 
 import { requestClient } from '#/api/request';
+
+type RuntimeEnvelope<T> = {
+  code: number;
+  data: T;
+  errorCode?: string;
+  message?: string;
+  messageKey?: string;
+  messageParams?: Record<string, unknown>;
+};
 
 /** 插件列表 */
 export async function pluginList(params?: PluginListParams) {
@@ -35,7 +46,17 @@ export function pluginInstall(
   pluginId: string,
   payload?: PluginAuthorizationPayload,
 ) {
-  return requestClient.post(`/plugins/${pluginId}/install`, payload);
+  return requestClient.post<PluginInstallResult>(
+    `/plugins/${pluginId}/install`,
+    payload,
+  );
+}
+
+/** 检查插件依赖 */
+export function pluginDependencyCheck(pluginId: string) {
+  return requestClient.get<PluginDependencyCheckResult>(
+    `/plugins/${pluginId}/dependencies`,
+  );
 }
 
 /** 上传动态插件 */
@@ -71,14 +92,37 @@ export function pluginDisable(pluginId: string) {
   return requestClient.put(`/plugins/${pluginId}/disable`);
 }
 
-/** 卸载插件 */
-export function pluginUninstall(pluginId: string, purgeStorageData?: boolean) {
-  return requestClient.delete(`/plugins/${pluginId}`, {
-    params:
-      typeof purgeStorageData === 'boolean'
-        ? {
-            purgeStorageData: purgeStorageData ? 1 : 0,
-          }
-        : undefined,
+/** 更新插件新租户自动启用策略 */
+export function pluginUpdateTenantProvisioningPolicy(
+  pluginId: string,
+  autoEnableForNewTenants: boolean,
+) {
+  return requestClient.put(`/plugins/${pluginId}/tenant-provisioning-policy`, {
+    autoEnableForNewTenants,
   });
+}
+
+/** 卸载插件 */
+export async function pluginUninstall(
+  pluginId: string,
+  options?: { force?: boolean; purgeStorageData?: boolean },
+) {
+  const params: Record<string, boolean | number> = {};
+  if (typeof options?.purgeStorageData === 'boolean') {
+    params.purgeStorageData = options.purgeStorageData ? 1 : 0;
+  }
+  if (options?.force) {
+    params.force = true;
+  }
+  const res = await requestClient.delete<RuntimeEnvelope<unknown>>(
+    `/plugins/${pluginId}`,
+    {
+      params: Object.keys(params).length > 0 ? params : undefined,
+      responseReturn: 'body',
+    },
+  );
+  if (!res || res.code !== 0) {
+    throw res;
+  }
+  return res.data;
 }

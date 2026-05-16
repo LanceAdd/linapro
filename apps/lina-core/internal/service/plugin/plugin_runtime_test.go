@@ -5,10 +5,8 @@ package plugin
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -45,7 +43,7 @@ func TestDynamicPluginUpgradeKeepsPreviousReleaseFrontendAssets(t *testing.T) {
 		nil,
 	)
 
-	if err := service.Install(ctx, pluginID, InstallOptions{}); err != nil {
+	if _, err := service.Install(ctx, pluginID, InstallOptions{}); err != nil {
 		t.Fatalf("expected initial install to succeed, got error: %v", err)
 	}
 	if err := service.Enable(ctx, pluginID); err != nil {
@@ -70,7 +68,7 @@ func TestDynamicPluginUpgradeKeepsPreviousReleaseFrontendAssets(t *testing.T) {
 		nil,
 	)
 
-	if err = service.Install(ctx, pluginID, InstallOptions{}); err != nil {
+	if _, err = service.Install(ctx, pluginID, InstallOptions{}); err != nil {
 		t.Fatalf("expected upgrade install to succeed, got error: %v", err)
 	}
 
@@ -166,7 +164,7 @@ func TestDynamicPluginUpgradeFailureRollsBackStableRelease(t *testing.T) {
 		},
 	)
 
-	if err := service.Install(ctx, pluginID, InstallOptions{}); err != nil {
+	if _, err := service.Install(ctx, pluginID, InstallOptions{}); err != nil {
 		t.Fatalf("expected initial install to succeed, got error: %v", err)
 	}
 	if err := service.Enable(ctx, pluginID); err != nil {
@@ -211,7 +209,7 @@ func TestDynamicPluginUpgradeFailureRollsBackStableRelease(t *testing.T) {
 		},
 	)
 
-	if err = service.Install(ctx, pluginID, InstallOptions{}); err == nil {
+	if _, err = service.Install(ctx, pluginID, InstallOptions{}); err == nil {
 		t.Fatal("expected failed upgrade install to return an error")
 	}
 
@@ -300,7 +298,7 @@ func TestDynamicPluginUninstallFailureRestoresStableRegistryFlags(t *testing.T) 
 		},
 	)
 
-	if err := service.Install(ctx, pluginID, InstallOptions{}); err != nil {
+	if _, err := service.Install(ctx, pluginID, InstallOptions{}); err != nil {
 		t.Fatalf("expected initial install to succeed, got error: %v", err)
 	}
 	if err := service.Enable(ctx, pluginID); err != nil {
@@ -315,7 +313,7 @@ func TestDynamicPluginUninstallFailureRestoresStableRegistryFlags(t *testing.T) 
 		t.Fatal("expected registry row before failed uninstall")
 	}
 
-	if err = service.Uninstall(ctx, pluginID); err == nil {
+	if err = service.Uninstall(ctx, pluginID, UninstallOptions{PurgeStorageData: true}); err == nil {
 		t.Fatal("expected failed uninstall to return an error")
 	}
 
@@ -370,7 +368,7 @@ func TestDynamicPluginFollowerDefersUntilPrimaryReconciles(t *testing.T) {
 		nil,
 	)
 
-	if err := service.Install(ctx, pluginID, InstallOptions{}); err != nil {
+	if _, err := service.Install(ctx, pluginID, InstallOptions{}); err != nil {
 		t.Fatalf("expected follower-side install request to persist desired state, got error: %v", err)
 	}
 
@@ -411,90 +409,6 @@ func TestDynamicPluginFollowerDefersUntilPrimaryReconciles(t *testing.T) {
 	}
 	if registryAfterPrimary.ReleaseId <= 0 {
 		t.Fatalf("expected primary reconciliation to persist active release id, got %d", registryAfterPrimary.ReleaseId)
-	}
-}
-
-// TestBundledDynamicPluginEnableMakesDynamicRouteExecutable verifies that the
-// bundled demo runtime plugin can execute one registered dynamic route.
-func TestBundledDynamicPluginEnableMakesDynamicRouteExecutable(t *testing.T) {
-	service := newTestService()
-	ctx := context.Background()
-
-	const pluginID = "plugin-demo-dynamic"
-
-	repoRoot, err := testutil.FindRepoRoot(".")
-	if err != nil {
-		t.Fatalf("expected repo root resolution to succeed, got error: %v", err)
-	}
-	cmd := exec.Command("make", "wasm", "p=plugin-demo-dynamic", "out="+testutil.TestDynamicStorageDir())
-	cmd.Dir = filepath.Join(repoRoot, "apps", "lina-plugins")
-	if output, buildErr := cmd.CombinedOutput(); buildErr != nil {
-		t.Fatalf("expected bundled dynamic plugin artifact build to succeed, got error: %v output=%s", buildErr, string(output))
-	}
-
-	if err := service.Install(ctx, pluginID, InstallOptions{}); err != nil {
-		t.Fatalf("expected bundled dynamic plugin install to succeed, got error: %v", err)
-	}
-	if err := service.Enable(ctx, pluginID); err != nil {
-		t.Fatalf("expected bundled dynamic plugin enable to succeed, got error: %v", err)
-	}
-
-	registry, err := service.getPluginRegistry(ctx, pluginID)
-	if err != nil {
-		t.Fatalf("expected plugin registry lookup to succeed, got error: %v", err)
-	}
-	if registry == nil {
-		t.Fatal("expected plugin registry row after enable")
-	}
-	if registry.Installed != catalog.InstalledYes || registry.Status != catalog.StatusEnabled {
-		t.Fatalf("expected bundled dynamic plugin to be installed+enabled, got %#v", registry)
-	}
-	if registry.ReleaseId <= 0 {
-		t.Fatalf("expected bundled dynamic plugin to keep active release id, got %d", registry.ReleaseId)
-	}
-
-	manifest, err := service.getActivePluginManifest(ctx, pluginID)
-	if err != nil {
-		t.Fatalf("expected active plugin manifest to load, got error: %v", err)
-	}
-	if manifest == nil || len(manifest.Routes) == 0 || manifest.BridgeSpec == nil || !manifest.BridgeSpec.RouteExecution {
-		t.Fatalf("expected bundled dynamic plugin active manifest to expose executable routes, got %#v", manifest)
-	}
-	if manifest.Routes[0].Path != "/backend-summary" || manifest.Routes[0].Method != http.MethodGet {
-		t.Fatalf("expected bundled dynamic plugin active route to expose GET /backend-summary, got %#v", manifest.Routes[0])
-	}
-
-	response, err := service.executeDynamicRoute(ctx, manifest, &pluginbridge.BridgeRequestEnvelopeV1{
-		PluginID: pluginID,
-		Route: &pluginbridge.RouteMatchSnapshotV1{
-			InternalPath: "/backend-summary",
-			PublicPath:   "/api/v1/extensions/plugin-demo-dynamic/backend-summary",
-			Access:       pluginbridge.AccessLogin,
-			Permission:   "plugin-demo-dynamic:backend:view",
-		},
-		Identity: &pluginbridge.IdentitySnapshotV1{
-			UserID:       1,
-			Username:     "admin",
-			DataScope:    1,
-			IsSuperAdmin: true,
-		},
-		Request: &pluginbridge.HTTPRequestSnapshotV1{
-			Method: http.MethodGet,
-		},
-	})
-	if err != nil {
-		t.Fatalf("expected bundled dynamic plugin route execution to succeed, got error: %v", err)
-	}
-	if response == nil || response.StatusCode != 200 {
-		t.Fatalf("expected bundled dynamic plugin route response 200, got %#v", response)
-	}
-
-	payload := map[string]any{}
-	if err = json.Unmarshal(response.Body, &payload); err != nil {
-		t.Fatalf("expected bundled dynamic plugin response to be valid json, got error: %v", err)
-	}
-	if payload["pluginId"] != pluginID {
-		t.Fatalf("expected bundled dynamic plugin payload to preserve pluginId, got %#v", payload)
 	}
 }
 
@@ -545,7 +459,7 @@ func TestInstallSameVersionDynamicPluginRefreshesArchivedReleaseArtifact(t *test
 		initialBridge,
 	)
 
-	if err := service.Install(ctx, pluginID, InstallOptions{}); err != nil {
+	if _, err := service.Install(ctx, pluginID, InstallOptions{}); err != nil {
 		t.Fatalf("expected initial install to succeed, got error: %v", err)
 	}
 	if err := service.Enable(ctx, pluginID); err != nil {
@@ -594,7 +508,7 @@ func TestInstallSameVersionDynamicPluginRefreshesArchivedReleaseArtifact(t *test
 		initialBridge,
 	)
 
-	if err = service.Install(ctx, pluginID, InstallOptions{}); err != nil {
+	if _, err = service.Install(ctx, pluginID, InstallOptions{}); err != nil {
 		t.Fatalf("expected same-version refresh install to succeed, got error: %v", err)
 	}
 

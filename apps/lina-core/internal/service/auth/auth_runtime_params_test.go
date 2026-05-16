@@ -9,14 +9,25 @@ import (
 	"net/http"
 	"testing"
 
-	_ "lina-core/pkg/dbdriver"
 	"github.com/gogf/gf/v2/net/ghttp"
+	_ "lina-core/pkg/dbdriver"
 
 	"lina-core/internal/dao"
 	"lina-core/internal/model/do"
 	"lina-core/internal/model/entity"
+	"lina-core/internal/service/bizctx"
+	"lina-core/internal/service/cachecoord"
 	hostconfig "lina-core/internal/service/config"
 	i18nsvc "lina-core/internal/service/i18n"
+	"lina-core/internal/service/kvcache"
+	"lina-core/internal/service/orgcap"
+	pluginsvc "lina-core/internal/service/plugin"
+	"lina-core/internal/service/session"
+	"lina-core/pkg/pluginhost"
+	pluginservicebizctx "lina-core/pkg/pluginservice/bizctx"
+	pluginserviceconfig "lina-core/pkg/pluginservice/config"
+	plugincontract "lina-core/pkg/pluginservice/contract"
+	pluginservicetenantfilter "lina-core/pkg/pluginservice/tenantfilter"
 )
 
 // TestLoginRejectsBlacklistedIP verifies managed login IP blacklist settings
@@ -27,16 +38,126 @@ func TestLoginRejectsBlacklistedIP(t *testing.T) {
 	username := fmt.Sprintf("blacklist-test-%s", t.Name())
 	ctx := newRequestContext(t, "127.0.0.1:18080")
 
-	_, err := New(nil).Login(ctx, LoginInput{
+	_, err := newRuntimeParamAuthTestService().Login(ctx, LoginInput{
 		Username: username,
 		Password: "ignored",
 	})
 	if err == nil {
 		t.Fatal("expected blacklisted login attempt to fail")
 	}
-	if localized := i18nsvc.New().LocalizeError(context.Background(), err); localized != "登录IP已被禁止" {
+	if localized := i18nsvc.New(bizctx.New(), hostconfig.New(), cachecoord.Default(nil)).LocalizeError(context.Background(), err); localized != "登录IP已被禁止" {
 		t.Fatalf("expected blacklisted login error %q, got %q", "登录IP已被禁止", localized)
 	}
+}
+
+// newRuntimeParamAuthTestService constructs auth with explicit test
+// dependencies while still reading runtime params from the real config service.
+func newRuntimeParamAuthTestService() Service {
+	configSvc := hostconfig.New()
+	bizCtxSvc := bizctx.New()
+	cacheCoordSvc := cachecoord.Default(nil)
+	i18nSvc := i18nsvc.New(bizCtxSvc, configSvc, cacheCoordSvc)
+	sessionStore := session.NewDBStore()
+	pluginSvc := pluginsvc.New(nil, configSvc, bizCtxSvc, cacheCoordSvc, i18nSvc, sessionStore)
+	pluginSvc.SetHostServices(newRuntimeParamAuthTestHostServices(i18nSvc))
+	cacheSvc := kvcache.New()
+	return New(configSvc, pluginSvc, orgcap.New(pluginSvc), roleTestService{}, disabledTenantAuthTestService{}, sessionStore, cacheSvc)
+}
+
+// runtimeParamAuthTestHostServices publishes the host services required by
+// official source-plugin auth hooks during plugin-full tests.
+type runtimeParamAuthTestHostServices struct {
+	config       plugincontract.ConfigService
+	i18n         plugincontract.I18nService
+	tenantFilter plugincontract.TenantFilterService
+}
+
+// Ensure runtimeParamAuthTestHostServices satisfies the source-plugin directory.
+var _ pluginhost.HostServices = (*runtimeParamAuthTestHostServices)(nil)
+
+// newRuntimeParamAuthTestHostServices creates the minimal source-plugin host
+// service directory needed by auth runtime-parameter tests.
+func newRuntimeParamAuthTestHostServices(i18nSvc i18nsvc.Service) pluginhost.HostServices {
+	bizCtxSvc := pluginservicebizctx.New(nil)
+	return &runtimeParamAuthTestHostServices{
+		config:       pluginserviceconfig.New(),
+		i18n:         runtimeParamAuthTestI18n{service: i18nSvc},
+		tenantFilter: pluginservicetenantfilter.New(bizCtxSvc, nil),
+	}
+}
+
+// APIDoc returns no apidoc service for auth runtime-parameter tests.
+func (s *runtimeParamAuthTestHostServices) APIDoc() plugincontract.APIDocService { return nil }
+
+// Auth returns no auth service for auth runtime-parameter tests.
+func (s *runtimeParamAuthTestHostServices) Auth() plugincontract.AuthService { return nil }
+
+// BizCtx returns no bizctx service for auth runtime-parameter tests.
+func (s *runtimeParamAuthTestHostServices) BizCtx() plugincontract.BizCtxService { return nil }
+
+// Config returns the test host configuration service.
+func (s *runtimeParamAuthTestHostServices) Config() plugincontract.ConfigService {
+	if s == nil {
+		return nil
+	}
+	return s.config
+}
+
+// I18n returns the runtime translation adapter used by auth hooks.
+func (s *runtimeParamAuthTestHostServices) I18n() plugincontract.I18nService {
+	if s == nil {
+		return nil
+	}
+	return s.i18n
+}
+
+// Notify returns no notification service for auth runtime-parameter tests.
+func (s *runtimeParamAuthTestHostServices) Notify() plugincontract.NotifyService { return nil }
+
+// PluginState returns no plugin-state service for auth runtime-parameter tests.
+func (s *runtimeParamAuthTestHostServices) PluginState() plugincontract.PluginStateService {
+	return nil
+}
+
+// Route returns no route service for auth runtime-parameter tests.
+func (s *runtimeParamAuthTestHostServices) Route() plugincontract.RouteService { return nil }
+
+// Session returns no session service for auth runtime-parameter tests.
+func (s *runtimeParamAuthTestHostServices) Session() plugincontract.SessionService { return nil }
+
+// TenantFilter returns the tenant-filter service used by auth hooks.
+func (s *runtimeParamAuthTestHostServices) TenantFilter() plugincontract.TenantFilterService {
+	if s == nil {
+		return nil
+	}
+	return s.tenantFilter
+}
+
+// runtimeParamAuthTestI18n adapts internal i18n to the source-plugin contract
+// for auth runtime-parameter tests.
+type runtimeParamAuthTestI18n struct {
+	service i18nsvc.Service
+}
+
+// GetLocale returns the effective request locale.
+func (s runtimeParamAuthTestI18n) GetLocale(ctx context.Context) string {
+	if s.service == nil {
+		return i18nsvc.DefaultLocale
+	}
+	return s.service.GetLocale(ctx)
+}
+
+// Translate resolves one runtime message.
+func (s runtimeParamAuthTestI18n) Translate(ctx context.Context, key string, fallback string) string {
+	if s.service == nil {
+		return fallback
+	}
+	return s.service.Translate(ctx, key, fallback)
+}
+
+// FindMessageKeys is unused by auth hooks and returns no matches.
+func (runtimeParamAuthTestI18n) FindMessageKeys(context.Context, string, string) []string {
+	return []string{}
 }
 
 // newRequestContext builds one request-backed context carrying the supplied

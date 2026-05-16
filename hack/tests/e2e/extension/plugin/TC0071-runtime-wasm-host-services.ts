@@ -68,6 +68,23 @@ function writeTestFile(filePath: string, content: string) {
   writeFileSync(filePath, content);
 }
 
+function pluginGoModContent(moduleName: string) {
+  const hostModulePath = path
+    .join(repoRoot(), "apps", "lina-core")
+    .replaceAll("\\", "/");
+  return `module ${moduleName}
+
+go 1.25.0
+
+require (
+	github.com/gogf/gf/v2 v2.10.1
+	lina-core v0.0.0
+)
+
+replace lina-core => ${hostModulePath}
+`;
+}
+
 function assertOk(response: APIResponse, message: string) {
   expect(response.ok(), `${message}, status=${response.status()}`).toBeTruthy();
 }
@@ -173,6 +190,14 @@ async function uninstallPlugin(adminApi: APIRequestContext, pluginID: string) {
   await expectApiSuccess(response, `卸载动态插件失败: ${pluginID}`);
 }
 
+async function tryUninstallPlugin(adminApi: APIRequestContext, pluginID: string) {
+  const response = await adminApi.delete(`plugins/${pluginID}`);
+  const payload = (await response.json()) as {
+    code?: number;
+  };
+  return payload?.code === 0;
+}
+
 async function setPluginEnabled(
   adminApi: APIRequestContext,
   pluginID: string,
@@ -196,7 +221,11 @@ async function resetPlugin(adminApi: APIRequestContext, pluginID: string) {
     await setPluginEnabled(adminApi, pluginID, false);
   }
   if (plugin.installed === 1) {
-    await uninstallPlugin(adminApi, pluginID);
+    const uninstalled = await tryUninstallPlugin(adminApi, pluginID);
+    if (!uninstalled) {
+      cleanupPluginRows([pluginID]);
+      cleanupArtifacts([pluginID]);
+    }
   }
 }
 
@@ -309,10 +338,7 @@ function buildSuccessPluginSource(upstreamBaseURL: string) {
 
   writeTestFile(
     path.join(pluginDir, "go.mod"),
-    `module ${moduleName}
-
-go 1.25.0
-`,
+    pluginGoModContent(moduleName),
   );
   writeTestFile(path.join(pluginDir, "main.go"), buildPluginRuntimeMain(moduleName));
   writeTestFile(path.join(pluginDir, "plugin_embed.go"), buildPluginEmbedFile());
@@ -323,6 +349,9 @@ go 1.25.0
 name: Host Services E2E
 version: v0.1.0
 type: dynamic
+scope_nature: tenant_aware
+supports_multi_tenant: false
+default_install_mode: global
 hostServices:
   - service: runtime
     methods:
@@ -608,10 +637,7 @@ function buildDeniedPluginSource() {
 
   writeTestFile(
     path.join(pluginDir, "go.mod"),
-    `module ${moduleName}
-
-go 1.25.0
-`,
+    pluginGoModContent(moduleName),
   );
   writeTestFile(path.join(pluginDir, "main.go"), buildPluginRuntimeMain(moduleName));
   writeTestFile(path.join(pluginDir, "plugin_embed.go"), buildPluginEmbedFile());
@@ -622,6 +648,9 @@ go 1.25.0
 name: Host Services Denied E2E
 version: v0.1.0
 type: dynamic
+scope_nature: tenant_aware
+supports_multi_tenant: false
+default_install_mode: global
 hostServices:
   - service: storage
     methods:
@@ -723,6 +752,14 @@ function buildDynamicPluginArtifact(pluginDir: string, pluginID: string) {
     ].join("\n"),
   );
   try {
+    execFileSync("go", ["mod", "tidy"], {
+      cwd: pluginDir,
+      env: {
+        ...process.env,
+        GOWORK: goWorkPath,
+      },
+      stdio: "pipe",
+    });
     execFileSync(
       "go",
       [
@@ -787,6 +824,9 @@ function buildRawSQLInvalidArtifact() {
         name: "Host Services Raw SQL E2E",
         version: "v0.1.0",
         type: "dynamic",
+        scopeNature: "tenant_aware",
+        supportsMultiTenant: false,
+        defaultInstallMode: "global",
       }),
     ),
   );

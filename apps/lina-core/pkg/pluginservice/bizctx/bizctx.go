@@ -1,52 +1,29 @@
 // Package bizctx exposes a narrowed view of the host business context to source
-// plugins so they can read the current request's authenticated user without
-// depending on host-internal service packages.
+// plugins so they can read current request identity, tenancy, and impersonation
+// metadata without depending on host-internal service packages.
 package bizctx
 
 import (
 	"context"
 
-	internalbizctx "lina-core/internal/service/bizctx"
+	"lina-core/pkg/pluginservice/contract"
 )
 
-// Service defines the bizctx operations published to source plugins.
-type Service interface {
-	// CurrentUserID returns the authenticated user identifier bound to the request
-	// context, or zero when no user context is attached.
-	CurrentUserID(ctx context.Context) int
-	// CurrentUsername returns the authenticated username bound to the request
-	// context, or the empty string when no user context is attached.
-	CurrentUsername(ctx context.Context) string
-}
-
-// serviceAdapter bridges the internal bizctx service into the published plugin contract.
+// serviceAdapter reads plugin-visible context from an optional provider or context value.
 type serviceAdapter struct {
-	service internalbizctx.Service
+	provider contract.ContextProvider
 }
 
-// New creates and returns the published bizctx service adapter.
-func New() Service {
-	return &serviceAdapter{service: internalbizctx.New()}
+// New creates and returns a business-context service backed by the optional provider.
+func New(provider contract.ContextProvider) contract.BizCtxService {
+	return &serviceAdapter{provider: provider}
 }
 
-// CurrentUserID returns the authenticated user identifier bound to the request context.
-func (s *serviceAdapter) CurrentUserID(ctx context.Context) int {
-	if s == nil || s.service == nil {
-		return 0
+// Current returns a read-only snapshot of the request context fields published
+// to source plugins.
+func (s *serviceAdapter) Current(ctx context.Context) contract.CurrentContext {
+	if s != nil && s.provider != nil {
+		return s.provider.Current(ctx)
 	}
-	if c := s.service.Get(ctx); c != nil {
-		return c.UserId
-	}
-	return 0
-}
-
-// CurrentUsername returns the authenticated username bound to the request context.
-func (s *serviceAdapter) CurrentUsername(ctx context.Context) string {
-	if s == nil || s.service == nil {
-		return ""
-	}
-	if c := s.service.Get(ctx); c != nil {
-		return c.Username
-	}
-	return ""
+	return contract.CurrentFromContext(ctx)
 }

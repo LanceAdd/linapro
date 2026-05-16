@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Locator, Page, Response } from "@playwright/test";
 
 import {
   waitForBusyIndicatorsToClear,
@@ -192,33 +192,51 @@ export class DictPage {
     await waitForRouteReady(this.page);
   }
 
-  async deleteType(typeName: string) {
+  async deleteType(typeName: string): Promise<Response> {
     // Search for the type first
     await this.fillTypeSearchField("字典名称", typeName);
     await this.clickTypeSearch();
 
     const deletedRow = await this.resolveTypeRow(typeName);
+    const deleteButton = deletedRow
+      .getByRole("button", { name: /删\s*除|Delete/i })
+      .first();
 
-    // Click delete button (ghost-button in action column)
-    await this.typePanel
-      .locator(".ant-btn-sm")
-      .filter({ hasText: /删\s*除/ })
-      .first()
-      .click();
+    if (await deleteButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await deleteButton.click();
+    } else {
+      // VXE fixed action columns can render outside the primary row tree.
+      await this.typePanel
+        .locator(".ant-btn-sm")
+        .filter({ hasText: /删\s*除|Delete/i })
+        .first()
+        .click();
+    }
 
     // Confirm the visible modal directly instead of relying on a global DOM query.
     const modal = await waitForConfirmOverlay(this.page);
-    await modal
+    const confirmButton = modal
       .getByRole("button", { name: /确\s*定|确\s*认|OK/i })
-      .last()
-      .click({ force: true });
+      .last();
+    await confirmButton.waitFor({ state: "visible", timeout: 10000 });
 
+    const [response] = await Promise.all([
+      this.page.waitForResponse(
+        (candidate) =>
+          /\/dict\/type\/[^/?#]+\/?$/.test(
+            new URL(candidate.url()).pathname,
+          ) && candidate.request().method() === "DELETE",
+        { timeout: 30000 },
+      ),
+      confirmButton.click(),
+    ]);
     await waitForRouteReady(this.page);
     await modal.waitFor({ state: "hidden", timeout: 10000 }).catch(() => {});
     await deletedRow
       .waitFor({ state: "hidden", timeout: 10000 })
       .catch(() => {});
     await waitForBusyIndicatorsToClear(this.page);
+    return response;
   }
 
   async clickCurrentTypeDeleteAction(expectedTypeName?: string) {

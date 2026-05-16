@@ -11,7 +11,10 @@
         "hashFailed": "密码加密失败"
       },
       "token": {
-        "invalid": "无效的Token"
+        "invalid": "无效的Token",
+        "state": {
+          "unavailable": "认证Token状态暂时不可用"
+        }
       }
     },
     "cache": {
@@ -777,8 +780,8 @@
           "manifest": {
             "required": "源码插件清单不能为空"
           },
-          "pending": "检测到已安装源码插件存在待完成升级，宿主启动前必须先通过 AI 工具调用 lina-upgrade 技能。\n{items}",
-          "pendingWithBulk": "检测到已安装源码插件存在待完成升级，宿主启动前必须先通过 AI 工具调用 lina-upgrade 技能。\n{items}\n如需一次性处理全部待升级源码插件，请让 AI 工具执行：{bulkCommand}",
+          "pending": "检测到已安装源码插件存在待完成升级，宿主启动前必须先处理下列源码插件版本。\n{items}",
+          "pendingWithBulk": "检测到已安装源码插件存在待完成升级，宿主启动前必须先处理下列源码插件版本。\n{items}\n如需统一排查全部待升级源码插件：{bulkCommand}",
           "plugin": {
             "id": {
               "required": "源码插件 ID 不能为空"
@@ -809,6 +812,26 @@
       },
       "status": {
         "invalid": "插件状态仅支持 0 或 1"
+      },
+      "tenant": {
+        "provisioning": {
+          "policy": {
+            "invalid": "插件 {pluginId} 必须支持多租户治理并以 tenant_scoped 模式安装，才能自动启用到新租户"
+          }
+        }
+      },
+      "dependency": {
+        "blocked": "插件 {pluginId} 依赖检查失败：{blockers}",
+        "auto": {
+          "install": {
+            "failed": "插件 {pluginId} 自动安装依赖失败，失败插件：{failedPluginId}；已安装依赖：{installedDependencies}"
+          }
+        }
+      },
+      "reverse": {
+        "dependency": {
+          "blocked": "插件 {pluginId} 不能变更，因为已有已安装插件依赖它：{dependents}"
+        }
       }
     },
     "role": {
@@ -835,6 +858,18 @@
         "scope": {
           "dept": {
             "unavailable": "本部门数据权限需要先启用组织管理插件"
+          },
+          "unsupported": "不支持的角色数据权限范围：{scope}"
+        }
+      }
+    },
+    "tenant": {
+      "role": {
+        "all": {
+          "data": {
+            "scope": {
+              "forbidden": "租户角色不能使用全部数据权限"
+            }
           }
         }
       }
@@ -869,6 +904,27 @@
           "unsupported": "不支持的用户数据权限范围：{scope}"
         }
       },
+      "tenant": {
+        "membership": {
+          "cardinality": {
+            "exceeded": "当前配置下用户只能归属于一个租户"
+          },
+          "cross": {
+            "tenant": {
+              "denied": "当前上下文不能将用户分配到其他租户"
+            }
+          },
+          "query": {
+            "failed": "查询用户租户归属可见性失败"
+          },
+          "replace": {
+            "failed": "更新用户租户归属失败"
+          },
+          "tenant": {
+            "unavailable": "所选租户不可用"
+          }
+        }
+      },
       "import": {
         "excel": {
           "parse": {
@@ -890,6 +946,24 @@
       },
       "username": {
         "exists": "用户名已存在"
+      },
+      "batch": {
+        "update": {
+          "ids": {
+            "required": "请选择要更新的用户"
+          },
+          "fields": {
+            "required": "请选择至少一个要更新的用户字段"
+          },
+          "status": {
+            "required": "请选择目标用户状态"
+          },
+          "role": {
+            "tenant": {
+              "conflict": "请分两次批量更新用户角色和所属租户"
+            }
+          }
+        }
       }
     },
     "usermsg": {
@@ -949,6 +1023,9 @@
           "invalid": "锁票据内容无效",
           "plugin": {
             "mismatch": "锁票据插件身份不匹配"
+          },
+          "tenant": {
+            "mismatch": "锁票据租户身份不匹配"
           },
           "resource": {
             "mismatch": "锁票据逻辑锁名不匹配"
@@ -1092,6 +1169,11 @@
         "authenticated": "请先登录"
       },
       "unsupported": "不支持的数据权限范围：{scope}"
+    },
+    "session": {
+      "state": {
+        "unavailable": "在线会话状态暂时不可用"
+      }
     }
   },
   "validation": {

@@ -21,50 +21,56 @@ type SysPluginDao struct {
 
 // SysPluginColumns defines and stores column names for the table sys_plugin.
 type SysPluginColumns struct {
-	Id           string // Primary key ID
-	PluginId     string // Plugin unique identifier (kebab-case)
-	Name         string // Plugin name
-	Version      string // Plugin version
-	Type         string // Plugin top-level type: source/dynamic
-	Installed    string // Installation status: 1=installed, 0=not installed
-	Status       string // Enablement status: 1=enabled, 0=disabled
-	DesiredState string // Host desired state: uninstalled/installed/enabled
-	CurrentState string // Host current state: uninstalled/installed/enabled/reconciling/failed
-	Generation   string // Current host generation number
-	ReleaseId    string // Current active host release ID
-	ManifestPath string // Plugin manifest file path
-	Checksum     string // Plugin package checksum
-	InstalledAt  string // Installation time
-	EnabledAt    string // Last enabled time
-	DisabledAt   string // Last disabled time
-	Remark       string // Remark
-	CreatedAt    string // Creation time
-	UpdatedAt    string // Update time
-	DeletedAt    string // Deletion time
+	Id                      string // Primary key ID
+	PluginId                string // Plugin unique identifier (kebab-case)
+	Name                    string // Plugin name
+	Version                 string // Plugin version
+	Type                    string // Plugin top-level type: source/dynamic
+	ScopeNature             string // Plugin scope nature: platform_only or tenant_aware
+	InstallMode             string // Plugin install mode: global or tenant_scoped
+	AutoEnableForNewTenants string // Platform policy: whether installed and enabled tenant-scoped plugins are enabled for new tenants automatically
+	Installed               string // Installation status: 1=installed, 0=not installed
+	Status                  string // Enablement status: 1=enabled, 0=disabled
+	DesiredState            string // Host desired state: uninstalled/installed/enabled
+	CurrentState            string // Host current state: uninstalled/installed/enabled/reconciling/failed
+	Generation              string // Current host generation number
+	ReleaseId               string // Current active host release ID
+	ManifestPath            string // Plugin manifest file path
+	Checksum                string // Plugin package checksum
+	InstalledAt             string // Installation time
+	EnabledAt               string // Last enabled time
+	DisabledAt              string // Last disabled time
+	Remark                  string // Remark
+	CreatedAt               string // Creation time
+	UpdatedAt               string // Update time
+	DeletedAt               string // Deletion time
 }
 
 // sysPluginColumns holds the columns for the table sys_plugin.
 var sysPluginColumns = SysPluginColumns{
-	Id:           "id",
-	PluginId:     "plugin_id",
-	Name:         "name",
-	Version:      "version",
-	Type:         "type",
-	Installed:    "installed",
-	Status:       "status",
-	DesiredState: "desired_state",
-	CurrentState: "current_state",
-	Generation:   "generation",
-	ReleaseId:    "release_id",
-	ManifestPath: "manifest_path",
-	Checksum:     "checksum",
-	InstalledAt:  "installed_at",
-	EnabledAt:    "enabled_at",
-	DisabledAt:   "disabled_at",
-	Remark:       "remark",
-	CreatedAt:    "created_at",
-	UpdatedAt:    "updated_at",
-	DeletedAt:    "deleted_at",
+	Id:                      "id",
+	PluginId:                "plugin_id",
+	Name:                    "name",
+	Version:                 "version",
+	Type:                    "type",
+	ScopeNature:             "scope_nature",
+	InstallMode:             "install_mode",
+	AutoEnableForNewTenants: "auto_enable_for_new_tenants",
+	Installed:               "installed",
+	Status:                  "status",
+	DesiredState:            "desired_state",
+	CurrentState:            "current_state",
+	Generation:              "generation",
+	ReleaseId:               "release_id",
+	ManifestPath:            "manifest_path",
+	Checksum:                "checksum",
+	InstalledAt:             "installed_at",
+	EnabledAt:               "enabled_at",
+	DisabledAt:              "disabled_at",
+	Remark:                  "remark",
+	CreatedAt:               "created_at",
+	UpdatedAt:               "updated_at",
+	DeletedAt:               "deleted_at",
 }
 
 // NewSysPluginDao creates and returns a new DAO object for table data access.

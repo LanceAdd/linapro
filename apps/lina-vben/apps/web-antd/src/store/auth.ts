@@ -1,6 +1,7 @@
 import type { Recordable } from '@vben/types';
 
 import type { AppUserInfo } from '#/api/core/user';
+import type { LoginTenant } from '#/api/tenant/model';
 
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
@@ -13,14 +14,65 @@ import { notification } from 'ant-design-vue';
 import { defineStore } from 'pinia';
 
 import { getUserInfoApi, loginApi, logoutApi } from '#/api';
+import { authSelectTenant } from '#/api/tenant';
 import { $t } from '#/locales';
+import { useTenantStore } from '#/store/tenant';
+
+type UserMenuNode = {
+  children?: UserMenuNode[];
+  name?: string;
+  path?: string;
+};
+
+function normalizeMenuPath(path: string) {
+  return path.replace(/^\/+/u, '').replace(/\/+$/u, '');
+}
+
+function isMultiTenantMenuNode(item: UserMenuNode): boolean {
+  const path = normalizeMenuPath(item.path || '');
+  const name = item.name || '';
+
+  // The host platform group is always present; only concrete tenant pages
+  // should enable tenant-aware frontend behavior.
+  return (
+    path === 'platform/tenants' ||
+    path.startsWith('platform/tenants/') ||
+    path === 'tenant' ||
+    path.startsWith('tenant/') ||
+    name.startsWith('PlatformTenant') ||
+    name.startsWith('Tenant')
+  );
+}
+
+function hasMultiTenantMenu(items: UserMenuNode[] = []): boolean {
+  return items.some((item) => {
+    return (
+      isMultiTenantMenuNode(item) ||
+      hasMultiTenantMenu(item.children)
+    );
+  });
+}
+
+function resolveTenantEnabled(
+  tenants: LoginTenant[],
+  userInfo: AppUserInfo | null,
+  currentTenant: LoginTenant | null,
+) {
+  return (
+    tenants.length > 0 ||
+    !!currentTenant ||
+    hasMultiTenantMenu((userInfo?.menus ?? []) as UserMenuNode[])
+  );
+}
 
 export const useAuthStore = defineStore('auth', () => {
   const accessStore = useAccessStore();
   const userStore = useUserStore();
   const router = useRouter();
+  const tenantStore = useTenantStore();
 
   const loginLoading = ref(false);
+  const pendingPreToken = ref('');
 
   /**
    * 异步处理登录操作
@@ -35,15 +87,35 @@ export const useAuthStore = defineStore('auth', () => {
     let userInfo: AppUserInfo | null = null;
     try {
       loginLoading.value = true;
-      const { accessToken } = await loginApi(params);
+      const loginResult = await loginApi(params);
+      const { accessToken, preToken, refreshToken } = loginResult;
+      const tenants = Array.isArray(loginResult.tenants)
+        ? loginResult.tenants
+        : [];
+
+      if (preToken && tenants.length > 1 && !accessToken) {
+        pendingPreToken.value = preToken;
+        tenantStore.setTenantContext({
+          currentTenant: null,
+          enabled: true,
+          tenants,
+        });
+        return { requiresTenantSelection: true, tenants, userInfo };
+      }
 
       // 如果成功获取到 accessToken
       if (accessToken) {
         accessStore.setAccessToken(accessToken);
+        accessStore.setRefreshToken(refreshToken ?? null);
 
         // 获取用户信息并存储到 accessStore 中
         userInfo = await fetchUserInfo();
         userStore.setUserInfo(userInfo);
+        tenantStore.setTenantContext({
+          currentTenant: tenants.length === 1 ? tenants[0] : null,
+          enabled: resolveTenantEnabled(tenants, userInfo, tenants[0] ?? null),
+          tenants,
+        });
 
         if (accessStore.loginExpired) {
           accessStore.setLoginExpired(false);
@@ -51,7 +123,9 @@ export const useAuthStore = defineStore('auth', () => {
           onSuccess
             ? await onSuccess?.()
             : await router.push(
-                userInfo.homePath || preferences.app.defaultHomePath,
+                tenantStore.resolveFallbackPath(
+                  userInfo.homePath || preferences.app.defaultHomePath,
+                ),
               );
         }
 
@@ -68,17 +142,50 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     return {
+      requiresTenantSelection: false,
       userInfo,
     };
   }
 
-  async function logout(redirect: boolean = true) {
-    try {
-      await logoutApi();
-    } catch {
-      // 不做任何处理
+  async function selectTenant(tenantId: number) {
+    if (!pendingPreToken.value) {
+      return;
     }
+    try {
+      loginLoading.value = true;
+      const { accessToken, refreshToken } = await authSelectTenant(
+        pendingPreToken.value,
+        tenantId,
+      );
+      pendingPreToken.value = '';
+      accessStore.setAccessToken(accessToken);
+      accessStore.setRefreshToken(refreshToken ?? null);
+      const selectedTenant =
+        tenantStore.tenants.find((item) => item.id === tenantId) ?? null;
+      tenantStore.setTenantContext({
+        currentTenant: selectedTenant,
+        enabled: true,
+      });
+      const userInfo = await fetchUserInfo();
+      userStore.setUserInfo(userInfo);
+      await router.push(
+        tenantStore.resolveFallbackPath(
+          userInfo.homePath || preferences.app.defaultHomePath,
+        ),
+      );
+      notification.success({
+        description: selectedTenant?.name || '',
+        duration: 3,
+        message: $t('pages.multiTenant.messages.tenantSelected'),
+      });
+    } finally {
+      loginLoading.value = false;
+    }
+  }
+
+  async function clearSession(redirect: boolean = true) {
     resetAllStores();
+    tenantStore.$reset();
     accessStore.setLoginExpired(false);
 
     // 回登录页带上当前路由地址
@@ -92,6 +199,15 @@ export const useAuthStore = defineStore('auth', () => {
     });
   }
 
+  async function logout(redirect: boolean = true) {
+    try {
+      await logoutApi();
+    } catch {
+      // 不做任何处理
+    }
+    await clearSession(redirect);
+  }
+
   async function fetchUserInfo() {
     const userInfo = await getUserInfoApi();
     userStore.setUserInfo(userInfo);
@@ -100,6 +216,13 @@ export const useAuthStore = defineStore('auth', () => {
     if (userInfo.permissions) {
       accessStore.setAccessCodes(userInfo.permissions);
     }
+    tenantStore.setTenantContext({
+      enabled: resolveTenantEnabled(
+        tenantStore.tenants,
+        userInfo,
+        tenantStore.currentTenant,
+      ),
+    });
 
     return userInfo;
   }
@@ -111,8 +234,11 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     $reset,
     authLogin,
+    clearSession,
     fetchUserInfo,
     loginLoading,
     logout,
+    pendingPreToken,
+    selectTenant,
   };
 });

@@ -6,6 +6,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"lina-core/internal/service/coordination"
 )
 
 // Domain identifies one cache domain coordinated by the host.
@@ -23,6 +25,9 @@ type FailureStrategy string
 
 // ChangeReason describes why a cache domain revision was published.
 type ChangeReason string
+
+// TenantID identifies the tenant scope of one cache invalidation message.
+type TenantID int
 
 // Cache scope constants centralize stable invalidation scopes.
 const (
@@ -83,17 +88,27 @@ type DomainSpec struct {
 
 // SnapshotItem exposes one cache domain and scope coordination status.
 type SnapshotItem struct {
-	Domain           Domain           // Domain is the cache domain identifier.
-	Scope            Scope            // Scope is the explicit invalidation scope.
-	AuthoritySource  string           // AuthoritySource is the canonical data source.
-	ConsistencyModel ConsistencyModel // ConsistencyModel is the declared consistency model.
-	MaxStale         time.Duration    // MaxStale is the configured stale window.
-	FailureStrategy  FailureStrategy  // FailureStrategy is the configured degradation behavior.
-	LocalRevision    int64            // LocalRevision is the latest revision consumed locally.
-	SharedRevision   int64            // SharedRevision is the latest shared revision when cluster mode is enabled.
-	LastSyncedAt     time.Time        // LastSyncedAt records the latest successful local sync.
-	RecentError      string           // RecentError records the latest coordination failure.
-	StaleSeconds     int64            // StaleSeconds reports seconds elapsed since LastSyncedAt.
+	Domain                 Domain                   // Domain is the cache domain identifier.
+	Scope                  Scope                    // Scope is the explicit invalidation scope.
+	AuthoritySource        string                   // AuthoritySource is the canonical data source.
+	ConsistencyModel       ConsistencyModel         // ConsistencyModel is the declared consistency model.
+	MaxStale               time.Duration            // MaxStale is the configured stale window.
+	FailureStrategy        FailureStrategy          // FailureStrategy is the configured degradation behavior.
+	LocalRevision          int64                    // LocalRevision is the latest revision consumed locally.
+	SharedRevision         int64                    // SharedRevision is the latest shared revision when cluster mode is enabled.
+	LastSyncedAt           time.Time                // LastSyncedAt records the latest successful local sync.
+	Backend                coordination.BackendName // Backend is the active coordination backend for this snapshot.
+	CoordinationHealthy    bool                     // CoordinationHealthy reports the backend health snapshot when clustered coordination is active.
+	EventSubscriberRunning bool                     // EventSubscriberRunning reports whether the backend event consumer is active.
+	LastEventReceivedAt    time.Time                // LastEventReceivedAt records the latest consumed backend event time.
+	RecentError            string                   // RecentError records the latest coordination failure.
+	StaleSeconds           int64                    // StaleSeconds reports seconds elapsed since LastSyncedAt.
+}
+
+// InvalidationScope declares the tenant range for one cache invalidation.
+type InvalidationScope struct {
+	TenantID         TenantID // TenantID is the target tenant, 0 platform, or -1 all tenants.
+	CascadeToTenants bool     // CascadeToTenants invalidates tenant buckets after platform default changes.
 }
 
 // Service defines the cache coordination contract.
@@ -102,6 +117,8 @@ type Service interface {
 	ConfigureDomain(spec DomainSpec) error
 	// MarkChanged publishes one explicit cache domain/scope revision change.
 	MarkChanged(ctx context.Context, domain Domain, scope Scope, reason ChangeReason) (int64, error)
+	// MarkTenantChanged publishes one tenant-scoped cache domain/scope revision change.
+	MarkTenantChanged(ctx context.Context, domain Domain, scope Scope, tenantScope InvalidationScope, reason ChangeReason) (int64, error)
 	// EnsureFresh refreshes local state if the shared or local revision advanced.
 	EnsureFresh(ctx context.Context, domain Domain, scope Scope, refresher Refresher) (int64, error)
 	// CurrentRevision returns the latest visible revision for one domain/scope.
@@ -117,6 +134,8 @@ var _ Service = (*serviceImpl)(nil)
 type serviceImpl struct {
 	topologyMu sync.RWMutex
 	topology   Topology
+	coordMu    sync.RWMutex
+	coord      coordination.Service
 	mu         sync.RWMutex
 	domains    map[Domain]DomainSpec
 	observed   map[revisionKey]int64
@@ -146,6 +165,14 @@ func New(topology Topology) Service {
 	return newServiceImpl(topology)
 }
 
+// NewWithCoordination creates an isolated cache coordination service that uses
+// the provided coordination backend for clustered shared revisions.
+func NewWithCoordination(topology Topology, coordinationSvc coordination.Service) Service {
+	service := newServiceImpl(topology)
+	service.setCoordination(coordinationSvc)
+	return service
+}
+
 // Default returns the process-wide cache coordination service. When a later
 // startup phase provides a richer topology, the existing coordinator is kept
 // and only its topology view is updated.
@@ -159,6 +186,26 @@ func Default(topology Topology) Service {
 	}
 	if shouldReplaceDefaultTopology(processDefaultService.service.topologySnapshot(), topology) {
 		processDefaultService.service.setTopology(topology)
+	}
+	return processDefaultService.service
+}
+
+// DefaultWithCoordination returns the process-wide cache coordination service
+// and wires the active distributed coordination backend when one is available.
+func DefaultWithCoordination(topology Topology, coordinationSvc coordination.Service) Service {
+	processDefaultService.Lock()
+	defer processDefaultService.Unlock()
+
+	if processDefaultService.service == nil {
+		processDefaultService.service = newServiceImpl(topology)
+		processDefaultService.service.setCoordination(coordinationSvc)
+		return processDefaultService.service
+	}
+	if shouldReplaceDefaultTopology(processDefaultService.service.topologySnapshot(), topology) {
+		processDefaultService.service.setTopology(topology)
+	}
+	if coordinationSvc != nil {
+		processDefaultService.service.setCoordination(coordinationSvc)
 	}
 	return processDefaultService.service
 }
@@ -191,6 +238,17 @@ func (s *serviceImpl) setTopology(topology Topology) {
 	s.topologyMu.Unlock()
 }
 
+// setCoordination replaces the distributed coordination backend used in
+// clustered mode without resetting local cache observations.
+func (s *serviceImpl) setCoordination(coordinationSvc coordination.Service) {
+	if s == nil {
+		return
+	}
+	s.coordMu.Lock()
+	s.coord = coordinationSvc
+	s.coordMu.Unlock()
+}
+
 // shouldReplaceDefaultTopology keeps the real cluster topology once it has
 // been wired while still allowing early static placeholders to be upgraded.
 func shouldReplaceDefaultTopology(current Topology, next Topology) bool {
@@ -200,16 +258,19 @@ func shouldReplaceDefaultTopology(current Topology, next Topology) bool {
 	if current == nil {
 		return true
 	}
+	_, currentStatic := current.(staticTopology)
+	_, nextStatic := next.(staticTopology)
+	if currentStatic && !nextStatic {
+		return true
+	}
+	if !currentStatic && nextStatic {
+		return false
+	}
 	if current.IsEnabled() && !next.IsEnabled() {
 		return false
 	}
 	if !current.IsEnabled() && next.IsEnabled() {
 		return true
-	}
-	_, currentStatic := current.(staticTopology)
-	_, nextStatic := next.(staticTopology)
-	if !currentStatic && nextStatic {
-		return false
 	}
 	return true
 }

@@ -87,24 +87,24 @@ export class MainLayout {
   }
 
   get preferencesDrawerTitle() {
-    return this.preferencesDrawer
-      .locator('[data-testid="preferences-drawer-title"]')
-      .first();
+    return this.page.getByTestId("preferences-drawer-title").first();
   }
 
   get preferencesDrawerSubtitle() {
-    return this.preferencesDrawer
-      .locator('[data-testid="preferences-drawer-subtitle"]')
-      .first();
+    return this.page.getByTestId("preferences-drawer-subtitle").first();
   }
 
   get preferencesDrawer() {
     return this.page
-      .locator('[role="dialog"]:visible')
+      .locator('[role="dialog"], [data-slot="sheet-content"]')
       .filter({
         has: this.page.locator('[data-testid="preferences-drawer-title"]'),
       })
       .first();
+  }
+
+  get tenantSwitcher() {
+    return this.page.getByTestId("tenant-switcher");
   }
 
   get workspaceFooterCopyright() {
@@ -121,11 +121,10 @@ export class MainLayout {
     await this.page.waitForLoadState("networkidle");
   }
 
-  async switchLanguage(label: "English" | "简体中文" | "繁體中文") {
+  async switchLanguage(label: "English" | "简体中文") {
     const localeMap = {
       English: "en-US",
       简体中文: "zh-CN",
-      繁體中文: "zh-TW",
     } as const;
     const locale = localeMap[label];
     await this.languageToggleTrigger.click();
@@ -139,12 +138,11 @@ export class MainLayout {
   }
 
   async switchLanguageFromPreferences(
-    label: "English" | "简体中文" | "繁體中文",
+    label: "English" | "简体中文",
   ) {
     const localeMap = {
       English: "en-US",
       简体中文: "zh-CN",
-      繁體中文: "zh-TW",
     } as const;
     const locale = localeMap[label];
     if (!(await this.preferencesDrawer.isVisible().catch(() => false))) {
@@ -242,9 +240,10 @@ export class MainLayout {
   }
 
   async openPreferences() {
+    await expect(this.preferencesTrigger).toBeVisible();
     await this.preferencesTrigger.click();
-    await expect(this.preferencesDrawer).toBeVisible();
     await expect(this.preferencesDrawerTitle).toBeVisible();
+    await expect(this.preferencesDrawer).toBeVisible();
   }
 
   async openPreferencesTab(label: string | RegExp) {
@@ -262,7 +261,7 @@ export class MainLayout {
     const confirmBtn = this.page.getByRole("button", {
       name: /确\s*认|confirm/i,
     });
-    await confirmBtn.waitFor({ state: "visible", timeout: 5000 });
+    await confirmBtn.waitFor({ state: "visible", timeout: 1500 });
     await confirmBtn.click();
 
     // Wait for redirect to login page

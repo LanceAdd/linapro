@@ -13,6 +13,7 @@ import (
 	"lina-core/internal/dao"
 	"lina-core/internal/model/do"
 	"lina-core/internal/service/cachecoord"
+	"lina-core/internal/service/coordination"
 	"lina-core/pkg/bizerr"
 )
 
@@ -44,6 +45,18 @@ func (f *fakeClusterRevisionCacheCoordService) MarkChanged(
 		return 0, f.markErr
 	}
 	return f.markRevision, nil
+}
+
+// MarkTenantChanged returns the same configured revision as the global change
+// path because runtime-parameter tests only verify revision coordination.
+func (f *fakeClusterRevisionCacheCoordService) MarkTenantChanged(
+	ctx context.Context,
+	domain cachecoord.Domain,
+	scope cachecoord.Scope,
+	_ cachecoord.InvalidationScope,
+	reason cachecoord.ChangeReason,
+) (int64, error) {
+	return f.MarkChanged(ctx, domain, scope, reason)
 }
 
 // EnsureFresh runs the refresher against the configured current revision.
@@ -225,15 +238,15 @@ func TestClusterRuntimeParamRevisionControllerPropagatesCacheCoordErrors(t *test
 // another clustered writer through the persistent coordination row.
 func TestClusterRuntimeParamRevisionControllerConsumesCrossInstanceRevision(t *testing.T) {
 	ctx := context.Background()
-	cleanupRuntimeConfigRevision(t, ctx)
 	clearLocalRuntimeParamRevision()
 	t.Cleanup(clearLocalRuntimeParamRevision)
+	coordSvc := coordination.NewMemory(nil)
 
 	publisher := &clusterRuntimeParamRevisionController{
-		cacheCoordSvc: cachecoord.New(cachecoord.NewStaticTopology(true)),
+		cacheCoordSvc: cachecoord.NewWithCoordination(cachecoord.NewStaticTopology(true), coordSvc),
 	}
 	consumer := &clusterRuntimeParamRevisionController{
-		cacheCoordSvc: cachecoord.New(cachecoord.NewStaticTopology(true)),
+		cacheCoordSvc: cachecoord.NewWithCoordination(cachecoord.NewStaticTopology(true), coordSvc),
 	}
 
 	revision, err := publisher.MarkChanged(ctx)

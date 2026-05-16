@@ -23,8 +23,10 @@ type SysPluginStateDao struct {
 type SysPluginStateColumns struct {
 	Id         string // Primary key ID
 	PluginId   string // Plugin unique identifier (kebab-case)
+	TenantId   string // Plugin state tenant ID, 0 means platform/global state
 	StateKey   string // State key
 	StateValue string // State value with JSON support
+	Enabled    string // Whether the plugin is enabled for the tenant
 	CreatedAt  string // Creation time
 	UpdatedAt  string // Update time
 }
@@ -33,8 +35,10 @@ type SysPluginStateColumns struct {
 var sysPluginStateColumns = SysPluginStateColumns{
 	Id:         "id",
 	PluginId:   "plugin_id",
+	TenantId:   "tenant_id",
 	StateKey:   "state_key",
 	StateValue: "state_value",
+	Enabled:    "enabled",
 	CreatedAt:  "created_at",
 	UpdatedAt:  "updated_at",
 }

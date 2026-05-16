@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 
 import { useVbenDrawer } from '@vben/common-ui';
 import { $t } from '@vben/locales';
+import { useUserStore } from '@vben/stores';
 
 import { message } from 'ant-design-vue';
 
@@ -16,13 +17,16 @@ import {
   userUpdate,
 } from '#/api/system/user';
 import { useDictStore } from '#/store/dict';
+import { useTenantStore } from '#/store/tenant';
 
 import { drawerSchema } from './data';
+import { loadUserTenantOptions } from './tenant-options';
 
 const emit = defineEmits<{ success: [] }>();
 
 const isEdit = ref(false);
 const orgEnabled = ref(false);
+const tenantEnabled = ref(false);
 const userId = ref<number>(0);
 const title = computed(() =>
   isEdit.value
@@ -31,6 +35,8 @@ const title = computed(() =>
 );
 
 const dictStore = useDictStore();
+const tenantStore = useTenantStore();
+const userStore = useUserStore();
 
 function addFullName(
   tree: any[],
@@ -61,6 +67,35 @@ const [Form, formApi] = useVbenForm({
   showDefaultActions: false,
   wrapperClass: 'grid-cols-2',
 });
+
+async function setupTenantOptions() {
+  if (!tenantEnabled.value) {
+    return;
+  }
+
+  const options = await loadUserTenantOptions({
+    currentTenant: tenantStore.currentTenant,
+    isPlatform: tenantStore.isPlatform,
+    tenants: tenantStore.tenants,
+    userId: Number(userStore.userInfo?.userId || 0),
+  });
+
+  formApi.updateSchema([
+    {
+      componentProps: {
+        'data-testid': 'user-drawer-tenant-select',
+        allowClear: true,
+        disabled: !tenantStore.isPlatform,
+        mode: 'multiple',
+        optionFilterProp: 'label',
+        options,
+        placeholder: $t('pages.multiTenant.placeholders.selectTenant'),
+        showSearch: true,
+      },
+      fieldName: 'tenantIds',
+    },
+  ]);
+}
 
 async function setupPostOptions(deptId: number | string) {
   const postList = await getUserPostOptions(Number(deptId));
@@ -124,6 +159,8 @@ async function setupDeptSelect() {
       fieldName: 'deptId',
     },
   ]);
+
+  return deptTree;
 }
 
 const [Drawer, drawerApi] = useVbenDrawer({
@@ -145,73 +182,109 @@ const [Drawer, drawerApi] = useVbenDrawer({
 
     drawerApi.setState({ loading: true });
 
-    const data = drawerApi.getData<{
-      isEdit: boolean;
-      orgEnabled?: boolean;
-      row?: any;
-    }>();
-    isEdit.value = data?.isEdit ?? false;
-    orgEnabled.value = data?.orgEnabled ?? false;
+    try {
+      const data = drawerApi.getData<{
+        isEdit: boolean;
+        orgEnabled?: boolean;
+        tenantEnabled?: boolean;
+        row?: any;
+      }>();
+      isEdit.value = data?.isEdit ?? false;
+      orgEnabled.value = data?.orgEnabled ?? false;
+      tenantEnabled.value = data?.tenantEnabled ?? false;
 
-    formApi.setState({
-      schema: drawerSchema(isEdit.value, orgEnabled.value),
-    });
+      formApi.setState({
+        schema: drawerSchema(
+          isEdit.value,
+          orgEnabled.value,
+          tenantEnabled.value,
+          !tenantStore.isPlatform,
+        ),
+      });
 
-    if (orgEnabled.value) {
-      await setupDeptSelect();
-    }
-
-    await setupRoleOptions();
-
-    const statusOptions =
-      await dictStore.getDictOptionsAsync('sys_normal_disable');
-    formApi.updateSchema([
-      {
-        fieldName: 'status',
-        componentProps: {
-          options: statusOptions.map((d) => ({
-            label: d.label,
-            value: Number(d.value),
-          })),
-        },
-      },
-    ]);
-
-    if (isEdit.value && data?.row) {
-      userId.value = data.row.id;
-      const user = await userInfo(data.row.id);
-      const values: Record<string, any> = {
-        username: user.username,
-        nickname: user.nickname,
-        email: user.email,
-        phone: user.phone,
-        sex: user.sex,
-        status: user.status,
-        remark: user.remark,
-        roleIds: user.roleIds,
-      };
-
+      const setupTasks: Promise<unknown>[] = [
+        setupRoleOptions(),
+        setupTenantOptions(),
+        dictStore.getDictOptionsAsync('sys_normal_disable'),
+      ];
       if (orgEnabled.value) {
-        values.deptId = user.deptId;
-        values.postIds = user.postIds;
+        setupTasks.push(setupDeptSelect());
       }
 
-      await formApi.setValues(values);
-      if (orgEnabled.value && user.deptId) {
-        await setupPostOptions(user.deptId);
+      const setupResults = await Promise.all(setupTasks);
+      const statusOptions = setupResults[2] as Awaited<
+        ReturnType<typeof dictStore.getDictOptionsAsync>
+      >;
+      formApi.updateSchema([
+        {
+          fieldName: 'status',
+          componentProps: {
+            options: statusOptions.map((d) => ({
+              label: d.label,
+              value: Number(d.value),
+            })),
+          },
+        },
+      ]);
+
+      if (isEdit.value && data?.row) {
+        userId.value = data.row.id;
+        const user = await userInfo(data.row.id);
+        const values: Record<string, any> = {
+          username: user.username,
+          nickname: user.nickname,
+          email: user.email,
+          phone: user.phone,
+          sex: user.sex,
+          status: user.status,
+          remark: user.remark,
+          roleIds: user.roleIds,
+        };
+        if (tenantEnabled.value) {
+          values.tenantIds =
+            tenantStore.isPlatform || user.tenantIds?.length
+              ? (user.tenantIds ?? [])
+              : tenantStore.currentTenant
+                ? [tenantStore.currentTenant.id]
+                : [];
+        }
+
+        if (orgEnabled.value) {
+          values.deptId = user.deptId;
+          values.postIds = user.postIds;
+        }
+
+        await formApi.setValues(values);
+        if (orgEnabled.value && user.deptId) {
+          await setupPostOptions(user.deptId);
+        }
+      } else {
+        userId.value = 0;
+        await formApi.resetForm();
+        if (tenantEnabled.value && !tenantStore.isPlatform) {
+          await formApi.setValues({
+            tenantIds: tenantStore.currentTenant
+              ? [tenantStore.currentTenant.id]
+              : [],
+          });
+        }
       }
-    } else {
-      userId.value = 0;
-      await formApi.resetForm();
+    } finally {
+      drawerApi.setState({ loading: false });
     }
-
-    drawerApi.setState({ loading: false });
   },
   async onConfirm() {
     const values = await formApi.getValues();
     if (!orgEnabled.value) {
       Reflect.deleteProperty(values, 'deptId');
       Reflect.deleteProperty(values, 'postIds');
+    }
+    if (!tenantEnabled.value) {
+      Reflect.deleteProperty(values, 'tenantIds');
+    } else if (!tenantStore.isPlatform) {
+      values.tenantIds = tenantStore.currentTenant
+        ? [tenantStore.currentTenant.id]
+        : [];
     }
 
     if (isEdit.value) {
