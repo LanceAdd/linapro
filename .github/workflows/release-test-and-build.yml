@@ -89,3 +89,31 @@ jobs:
       floating-tag: latest
       inspect-floating-tag: true
       plugins: "1"
+
+  # Creates the GitHub Release only after tag validation, release tests, and image publication succeed.
+  # 仅在标签校验、发布测试和镜像发布全部成功后创建 GitHub Release。
+  create-github-release:
+    name: Create GitHub release
+    if: ${{ github.event.created == true && startsWith(github.ref, 'refs/tags/') }}
+    needs:
+      - release-tag-version-check
+      - verification-suite
+      - release-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Creating a GitHub Release requires repository contents write access.
+    # 创建 GitHub Release 需要仓库 contents 写权限。
+    permissions:
+      contents: write
+    steps:
+      # Publish a release page for the tag that triggered this workflow.
+      # 为触发当前 workflow 的标签发布 GitHub Release 页面。
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "LinaPro Release ${RELEASE_TAG}" \
+            --notes "Release ${RELEASE_TAG}"
