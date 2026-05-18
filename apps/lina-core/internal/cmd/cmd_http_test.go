@@ -324,7 +324,7 @@ func newRouteBindingTestRuntime(ctx context.Context) *httpRuntime {
 	dictSvc := dict.New(i18nService)
 	scopeSvc := datascope.New(bizCtxSvc, roleSvc, orgCapSvc)
 	roleSvc.SetDataScopeService(scopeSvc)
-	menuSvc := menu.New(pluginSvc, i18nService, roleSvc, tenantSvc)
+	menuSvc := menu.New(pluginSvc, i18nService, roleSvc)
 	notifySvc := notify.New(tenantSvc)
 	authSvc := auth.New(configSvc, pluginSvc, orgCapSvc, roleSvc, tenantSvc, sessionStore, kvCacheSvc)
 	fileSvc := filesvc.New(configSvc, filesvc.NewLocalStorage(configSvc.GetUploadPath(ctx)), bizCtxSvc, dictSvc, scopeSvc)
