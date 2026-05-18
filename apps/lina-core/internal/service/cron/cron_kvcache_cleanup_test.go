@@ -85,7 +85,7 @@ func (f *fakeKVCacheService) Expire(
 	ownerType kvcache.OwnerType,
 	cacheKey string,
 	ttl time.Duration,
-) (bool, *gtime.Time, error) {
+) (bool, *time.Time, error) {
 	return false, nil, nil
 }
 

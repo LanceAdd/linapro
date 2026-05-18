@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gogf/gf/v2/os/gtime"
-
 	"lina-core/internal/service/coordination"
 	"lina-core/internal/service/kvcache"
 	"lina-core/pkg/bizerr"
@@ -235,7 +233,7 @@ func (b failingCacheBackend) Expire(
 	kvcache.OwnerType,
 	string,
 	time.Duration,
-) (bool, *gtime.Time, error) {
+) (bool, *time.Time, error) {
 	return false, nil, b.err
 }
 

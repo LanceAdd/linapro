@@ -13,7 +13,6 @@ import (
 
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/os/gtime"
 	"github.com/golang-jwt/jwt/v5"
 
 	"lina-core/internal/dao"
@@ -1178,7 +1177,7 @@ func (s *sharedMemoryKVCache) Incr(_ context.Context, ownerType kvcache.OwnerTyp
 }
 
 // Expire updates one item expiration.
-func (s *sharedMemoryKVCache) Expire(_ context.Context, ownerType kvcache.OwnerType, cacheKey string, ttl time.Duration) (bool, *gtime.Time, error) {
+func (s *sharedMemoryKVCache) Expire(_ context.Context, ownerType kvcache.OwnerType, cacheKey string, ttl time.Duration) (bool, *time.Time, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1214,7 +1213,7 @@ func (s *sharedMemoryKVCache) storeExpireLocked(key string, item *kvcache.Item, 
 	}
 	expireAt := time.Now().Add(ttl)
 	s.expires[key] = expireAt
-	item.ExpireAt = gtime.New(expireAt)
+	item.ExpireAt = &expireAt
 }
 
 // isExpiredLocked reports whether one item is expired. Caller must hold s.mu.

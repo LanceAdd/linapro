@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/os/gtime"
 	"github.com/golang-jwt/jwt/v5"
 	_ "lina-core/pkg/dbdriver"
 
@@ -218,14 +217,15 @@ func TestParseDynamicRouteTokenRejectsRefreshToken(t *testing.T) {
 }
 
 // waitForFreshSecond aligns the test clock with a new second to avoid flaky TIMESTAMP updates.
-func waitForFreshSecond(t *testing.T) *gtime.Time {
+func waitForFreshSecond(t *testing.T) *time.Time {
 	t.Helper()
 
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		now := time.Now()
 		if now.Nanosecond() < int((100 * time.Millisecond).Nanoseconds()) {
-			return gtime.NewFromTime(now.Truncate(time.Second))
+			truncated := now.Truncate(time.Second)
+			return &truncated
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -361,7 +361,7 @@ func insertDynamicRouteAccessTestSession(
 ) {
 	t.Helper()
 
-	now := gtime.Now()
+	now := time.Now()
 	if err := session.NewDBStore().Set(ctx, &session.Session{
 		TokenId:        tokenID,
 		TenantId:       tenantID,
@@ -371,8 +371,8 @@ func insertDynamicRouteAccessTestSession(
 		Ip:             "127.0.0.1",
 		Browser:        "go-test",
 		Os:             "darwin",
-		LoginTime:      now,
-		LastActiveTime: now,
+		LoginTime:      &now,
+		LastActiveTime: &now,
 	}); err != nil {
 		t.Fatalf("insert dynamic route access test session: %v", err)
 	}

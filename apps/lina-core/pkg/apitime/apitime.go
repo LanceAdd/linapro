@@ -10,14 +10,14 @@ import (
 	"github.com/gogf/gf/v2/os/gtime"
 )
 
-// Milli converts a GoFrame time value to a Unix timestamp in milliseconds.
+// Milli converts a standard-library time pointer to a Unix timestamp in milliseconds.
 // Nil or zero values are projected as nil so API responses can distinguish
 // absent timestamps from the Unix epoch.
-func Milli(value *gtime.Time) *int64 {
+func Milli(value *time.Time) *int64 {
 	if value == nil || value.IsZero() {
 		return nil
 	}
-	millis := value.TimestampMilli()
+	millis := value.UnixMilli()
 	return &millis
 }
 
@@ -43,5 +43,5 @@ func MilliFromString(value string) *int64 {
 	if err != nil {
 		return nil
 	}
-	return Milli(parsed)
+	return MilliFromTime(parsed.Time)
 }

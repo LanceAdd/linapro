@@ -11,7 +11,6 @@ import (
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/os/gtime"
 	_ "lina-core/pkg/dbdriver"
 
 	"lina-core/internal/dao"
@@ -32,10 +31,10 @@ const (
 // notifyTenantTestMembershipData is the typed payload used by tenant membership
 // test setup.
 type notifyTenantTestMembershipData struct {
-	UserID   int64       `orm:"user_id"`
-	TenantID int64       `orm:"tenant_id"`
-	Status   int         `orm:"status"`
-	JoinedAt *gtime.Time `orm:"joined_at"`
+	UserID   int64      `orm:"user_id"`
+	TenantID int64      `orm:"tenant_id"`
+	Status   int        `orm:"status"`
+	JoinedAt *time.Time `orm:"joined_at"`
 }
 
 // notifyTenantTestMembershipCleanupFilter is the typed filter used to clean
@@ -379,11 +378,12 @@ func insertNotifyTenantTestMembership(t *testing.T, ctx context.Context, userID 
 	t.Helper()
 
 	ensureNotifyTenantTestMembershipTable(t, ctx)
+	joinedAt := time.Now()
 	if _, err := g.DB().Model(notifyTenantMembershipTable).Safe().Ctx(ctx).Data(notifyTenantTestMembershipData{
 		UserID:   int64(userID),
 		TenantID: int64(tenantID),
 		Status:   status,
-		JoinedAt: gtime.Now(),
+		JoinedAt: &joinedAt,
 	}).Insert(); err != nil {
 		t.Fatalf("insert notify tenant membership: %v", err)
 	}

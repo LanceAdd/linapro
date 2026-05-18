@@ -11,7 +11,6 @@ import (
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/os/gtime"
 
 	"lina-core/internal/dao"
 	"lina-core/internal/model"
@@ -32,10 +31,10 @@ const (
 
 // userTenantMembershipTestInsertData is a typed insert payload for membership rows.
 type userTenantMembershipTestInsertData struct {
-	UserID   int64       `orm:"user_id"`
-	TenantID int64       `orm:"tenant_id"`
-	Status   int         `orm:"status"`
-	JoinedAt *gtime.Time `orm:"joined_at"`
+	UserID   int64      `orm:"user_id"`
+	TenantID int64      `orm:"tenant_id"`
+	Status   int        `orm:"status"`
+	JoinedAt *time.Time `orm:"joined_at"`
 }
 
 // userTenantMembershipTestRow is a compact membership join projection.
@@ -758,11 +757,12 @@ func (*userTenantMembershipTestProvider) ReplaceUserTenantAssignments(
 		return err
 	}
 	for _, tenantID := range normalized {
+		joinedAt := time.Now()
 		if _, err := g.DB().Model(userTenantMembershipTestMembershipTable).Safe().Ctx(ctx).Data(userTenantMembershipTestInsertData{
 			UserID:   int64(userID),
 			TenantID: int64(tenantID),
 			Status:   userTenantMembershipTestActive,
-			JoinedAt: gtime.Now(),
+			JoinedAt: &joinedAt,
 		}).Insert(); err != nil {
 			return err
 		}
@@ -883,11 +883,12 @@ func insertUserTenantMembershipTestUserRole(t *testing.T, ctx context.Context, u
 func insertUserTenantMembershipTestMembership(t *testing.T, ctx context.Context, userID int, tenantID int, status int) {
 	t.Helper()
 
+	joinedAt := time.Now()
 	if _, err := g.DB().Model(userTenantMembershipTestMembershipTable).Safe().Ctx(ctx).Data(userTenantMembershipTestInsertData{
 		UserID:   int64(userID),
 		TenantID: int64(tenantID),
 		Status:   status,
-		JoinedAt: gtime.Now(),
+		JoinedAt: &joinedAt,
 	}).Insert(); err != nil {
 		t.Fatalf("insert tenant membership test row: %v", err)
 	}

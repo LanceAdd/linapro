@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gogf/gf/v2/os/gfile"
-	"github.com/gogf/gf/v2/os/gtime"
 
 	"lina-core/internal/dao"
 	"lina-core/internal/model/do"
@@ -152,11 +152,11 @@ func (s *serviceImpl) buildPluginItem(ctx context.Context, manifest *catalog.Man
 		installMode = registry.InstallMode
 		autoEnableForNewTenants = registry.AutoEnableForNewTenants
 		if registry.InstalledAt != nil {
-			millis := registry.InstalledAt.TimestampMilli()
+			millis := registry.InstalledAt.UnixMilli()
 			installedAt = &millis
 		}
 		if registry.UpdatedAt != nil {
-			millis := registry.UpdatedAt.TimestampMilli()
+			millis := registry.UpdatedAt.UnixMilli()
 			updatedAt = &millis
 		}
 		if ctx != nil {
@@ -332,7 +332,7 @@ func (s *serviceImpl) reconcileRegistryArtifactState(ctx context.Context, regist
 		CurrentState: catalog.HostStateUninstalled.String(),
 		ReleaseId:    0,
 		Generation:   catalog.NextGeneration(registry),
-		DisabledAt:   gtime.Now(),
+		DisabledAt:   timePtr(time.Now()),
 	}
 	if _, err = dao.SysPlugin.Ctx(ctx).
 		Where(do.SysPlugin{PluginId: registry.PluginId}).
@@ -370,6 +370,12 @@ func (s *serviceImpl) reconcileRegistryArtifactState(ctx context.Context, regist
 		return nil, err
 	}
 	return updated, nil
+}
+
+// timePtr returns a pointer to value for generated DO time fields that preserve
+// database NULL semantics with *time.Time.
+func timePtr(value time.Time) *time.Time {
+	return &value
 }
 
 // projectRegistryArtifactState returns a read-only projection of a dynamic

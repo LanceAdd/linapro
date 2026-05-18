@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gogf/gf/v2/os/gtime"
-
 	"lina-core/internal/service/kvcache"
 	"lina-core/pkg/bizerr"
 	plugincontract "lina-core/pkg/pluginservice/contract"
@@ -102,7 +100,7 @@ func (s *cacheAdapter) Expire(
 	namespace string,
 	key string,
 	ttl time.Duration,
-) (bool, *gtime.Time, error) {
+) (bool, *time.Time, error) {
 	cacheKey, err := s.buildCacheKey(ctx, namespace, key)
 	if err != nil {
 		return false, nil, err

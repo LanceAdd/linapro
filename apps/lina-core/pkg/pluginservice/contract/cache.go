@@ -7,8 +7,6 @@ package contract
 import (
 	"context"
 	"time"
-
-	"github.com/gogf/gf/v2/os/gtime"
 )
 
 // Cache value kind constants describe the concrete payload representation
@@ -34,7 +32,7 @@ type CacheItem struct {
 	// IntValue is the integer payload when ValueKind is CacheValueKindInt.
 	IntValue int64
 	// ExpireAt is the optional absolute expiration time; nil means no expiration.
-	ExpireAt *gtime.Time
+	ExpireAt *time.Time
 }
 
 // CacheService defines the governed cache operations published to source
@@ -51,5 +49,5 @@ type CacheService interface {
 	// and preserves backend-specific existing expiration semantics otherwise.
 	Incr(ctx context.Context, namespace string, key string, delta int64, ttl time.Duration) (*CacheItem, error)
 	// Expire updates one cache item's expiration policy. ttl=0 clears expiration.
-	Expire(ctx context.Context, namespace string, key string, ttl time.Duration) (bool, *gtime.Time, error)
+	Expire(ctx context.Context, namespace string, key string, ttl time.Duration) (bool, *time.Time, error)
 }

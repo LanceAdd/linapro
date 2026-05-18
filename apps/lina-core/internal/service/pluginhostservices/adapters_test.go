@@ -6,9 +6,9 @@ package pluginhostservices
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/gogf/gf/v2/os/gctx"
-	"github.com/gogf/gf/v2/os/gtime"
 
 	"lina-core/internal/model"
 	internalauth "lina-core/internal/service/auth"
@@ -72,7 +72,7 @@ func TestToInternalSessionFilter(t *testing.T) {
 
 // TestFromInternalSession verifies host-internal session projections are copied into plugin DTOs.
 func TestFromInternalSession(t *testing.T) {
-	loginTime := gtime.Now()
+	loginTime := time.Now()
 	sessionItem := &internalsession.Session{
 		TokenId:        "token-1",
 		UserId:         100,
@@ -81,8 +81,8 @@ func TestFromInternalSession(t *testing.T) {
 		Ip:             "127.0.0.1",
 		Browser:        "Chrome",
 		Os:             "macOS",
-		LoginTime:      loginTime,
-		LastActiveTime: loginTime,
+		LoginTime:      &loginTime,
+		LastActiveTime: &loginTime,
 	}
 
 	result := fromInternalSession(sessionItem)
@@ -112,7 +112,7 @@ func TestFromInternalSessionListResult(t *testing.T) {
 		t.Fatalf("unexpected empty result: %#v", empty)
 	}
 
-	loginTime := gtime.Now()
+	loginTime := time.Now()
 	result := fromInternalSessionListResult(&internalsession.ListResult{
 		Items: []*internalsession.Session{
 			{
@@ -123,8 +123,8 @@ func TestFromInternalSessionListResult(t *testing.T) {
 				Ip:             "10.0.0.1",
 				Browser:        "Firefox",
 				Os:             "Linux",
-				LoginTime:      loginTime,
-				LastActiveTime: loginTime,
+				LoginTime:      &loginTime,
+				LastActiveTime: &loginTime,
 			},
 		},
 		Total: 1,
