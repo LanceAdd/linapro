@@ -72,6 +72,9 @@ func (s *serviceImpl) ValidateManifest(manifest *Manifest, filePath string) erro
 	if err := ValidateManifestMenus(manifest); err != nil {
 		return gerror.Wrapf(err, "plugin menu metadata is invalid: %s", fileLabel)
 	}
+	if err := NormalizeConsumerSpec(manifest); err != nil {
+		return gerror.Wrapf(err, "plugin consumer metadata is invalid: %s", fileLabel)
+	}
 	if err := ValidateDependencySpec(manifest.ID, manifest.Dependencies); err != nil {
 		return gerror.Wrapf(err, "plugin dependency metadata is invalid: %s", fileLabel)
 	}
@@ -150,7 +153,77 @@ func (s *serviceImpl) ValidateUploadedRuntimeManifest(manifest *Manifest) error 
 	if err := ValidateDependencySpec(manifest.ID, manifest.Dependencies); err != nil {
 		return err
 	}
-	return ValidateManifestMenus(manifest)
+	if err := ValidateManifestMenus(manifest); err != nil {
+		return err
+	}
+	return NormalizeConsumerSpec(manifest)
+}
+
+// NormalizeConsumerSpec validates and normalizes consumer-facing manifest declarations.
+func NormalizeConsumerSpec(manifest *Manifest) error {
+	if manifest == nil || manifest.Consumer == nil || manifest.Consumer.Frontend == nil {
+		return nil
+	}
+	frontend := manifest.Consumer.Frontend
+	rawMountPath := strings.TrimSpace(frontend.MountPath)
+	frontend.MountPath = normalizeConsumerMountPath(frontend.MountPath)
+	frontend.Index = strings.TrimSpace(frontend.Index)
+	if frontend.Index == "" {
+		frontend.Index = "index.html"
+	}
+	if isConsumerRootMountPath(rawMountPath) {
+		return gerror.New("consumer frontend mount_path cannot be root")
+	}
+	if strings.Contains(rawMountPath, "\\") || strings.Contains(rawMountPath, "//") {
+		return gerror.Newf("consumer frontend mount_path is invalid: %s", rawMountPath)
+	}
+	if frontend.MountPath == "" {
+		return nil
+	}
+	if strings.Contains(frontend.MountPath, "..") {
+		return gerror.Newf("consumer frontend mount_path is invalid: %s", frontend.MountPath)
+	}
+	if isReservedConsumerMountPath(frontend.MountPath) {
+		return gerror.Newf("consumer frontend mount_path uses a reserved prefix: %s", frontend.MountPath)
+	}
+	if _, err := pluginfs.NormalizeRelativePath(frontend.Index); err != nil {
+		return gerror.Wrap(err, "consumer frontend index is invalid")
+	}
+	return nil
+}
+
+// isConsumerRootMountPath reports whether an author-facing mount path maps to
+// the host root, including repeated slash spellings such as // or ///.
+func isConsumerRootMountPath(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return trimmed != "" && strings.Trim(trimmed, "/") == ""
+}
+
+// normalizeConsumerMountPath converts author-facing mount paths into a stable absolute form.
+func normalizeConsumerMountPath(value string) string {
+	trimmed := strings.Trim(strings.TrimSpace(value), "/")
+	if trimmed == "" {
+		return ""
+	}
+	return "/" + trimmed
+}
+
+// isReservedConsumerMountPath reports whether a mount would shadow host-owned routes.
+func isReservedConsumerMountPath(mountPath string) bool {
+	reservedPrefixes := []string{
+		"/api",
+		"/plugin-assets",
+		"/consumer-plugin-assets",
+		"/swagger",
+		"/api.json",
+		"/openapi",
+	}
+	for _, prefix := range reservedPrefixes {
+		if mountPath == prefix || strings.HasPrefix(mountPath, prefix+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // hydrateManifestTenantGovernanceFromFile fills governance fields from the

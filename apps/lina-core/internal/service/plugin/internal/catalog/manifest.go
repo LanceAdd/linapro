@@ -227,3 +227,8 @@ func (s *serviceImpl) DiscoverPagePaths(rootDir string) []string {
 func (s *serviceImpl) DiscoverSlotPaths(rootDir string) []string {
 	return pluginfs.DiscoverVuePaths(rootDir, filepath.Join("frontend", "slots"))
 }
+
+// DiscoverConsumerFrontendPaths discovers optional consumer frontend files by directory convention.
+func (s *serviceImpl) DiscoverConsumerFrontendPaths(rootDir string) []string {
+	return pluginfs.DiscoverConsumerFrontendPaths(rootDir)
+}

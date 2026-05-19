@@ -34,6 +34,7 @@ func (s *serviceImpl) UpgradeSourcePlugin(ctx context.Context, pluginID string) 
 	}
 	if result != nil && result.Executed {
 		s.invalidateRuntimeUpgradeCaches(ctx, pluginID, catalog.TypeSource.String(), "source_plugin_upgraded")
+		s.invalidateSourceConsumerFrontendMounts()
 		if err = s.markRuntimeCacheChanged(ctx, "source_plugin_upgraded"); err != nil {
 			return nil, err
 		}

@@ -99,24 +99,33 @@ func (s *serviceImpl) ReadSourcePluginManifestContent(manifest *Manifest) ([]byt
 
 // ReadSourcePluginAssetContent reads one asset relative path from an embedded or filesystem source plugin.
 func (s *serviceImpl) ReadSourcePluginAssetContent(manifest *Manifest, relativePath string) (string, error) {
-	normalizedPath, err := pluginfs.NormalizeRelativePath(relativePath)
+	content, err := s.ReadSourcePluginAssetBytes(manifest, relativePath)
 	if err != nil {
 		return "", err
+	}
+	return strings.TrimSpace(string(content)), nil
+}
+
+// ReadSourcePluginAssetBytes reads one asset body from an embedded or filesystem source plugin.
+func (s *serviceImpl) ReadSourcePluginAssetBytes(manifest *Manifest, relativePath string) ([]byte, error) {
+	normalizedPath, err := pluginfs.NormalizeRelativePath(relativePath)
+	if err != nil {
+		return nil, err
 	}
 
 	if embeddedFiles := GetSourcePluginEmbeddedFiles(manifest); embeddedFiles != nil {
 		content, err := fs.ReadFile(embeddedFiles, normalizedPath)
 		if err != nil {
-			return "", gerror.Wrapf(err, "read source plugin embedded asset failed: %s", normalizedPath)
+			return nil, gerror.Wrapf(err, "read source plugin embedded asset failed: %s", normalizedPath)
 		}
-		return strings.TrimSpace(string(content)), nil
+		return content, nil
 	}
 
 	sqlPath, err := pluginfs.ResolveResourcePath(manifest.RootDir, normalizedPath)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return strings.TrimSpace(gfile.GetContents(sqlPath)), nil
+	return gfile.GetBytes(sqlPath), nil
 }
 
 // ListInstallSQLPaths returns the ordered install SQL file paths for a source plugin manifest.
@@ -186,4 +195,15 @@ func (s *serviceImpl) ListFrontendSlotPaths(manifest *Manifest) []string {
 		return []string{}
 	}
 	return s.DiscoverSlotPaths(manifest.RootDir)
+}
+
+// ListConsumerFrontendPaths returns optional consumer frontend asset paths for a source plugin manifest.
+func (s *serviceImpl) ListConsumerFrontendPaths(manifest *Manifest) []string {
+	if embeddedFiles := GetSourcePluginEmbeddedFiles(manifest); embeddedFiles != nil {
+		return pluginfs.DiscoverConsumerFrontendPathsFromFS(embeddedFiles)
+	}
+	if manifest == nil {
+		return []string{}
+	}
+	return s.DiscoverConsumerFrontendPaths(manifest.RootDir)
 }

@@ -32,6 +32,7 @@ func newRuntimeCacheRevisionController(
 	integrationSvc pluginRuntimeIntegrationRefresher,
 	frontendSvc pluginRuntimeFrontendInvalidator,
 	i18nSvc runtimeBundleInvalidator,
+	sourceConsumerMountSvc pluginRuntimeSourceConsumerMountInvalidator,
 ) *pluginruntimecache.Controller {
 	clusterEnabled := false
 	if topology != nil {
@@ -49,6 +50,9 @@ func newRuntimeCacheRevisionController(
 			}
 			if frontendSvc != nil {
 				frontendSvc.InvalidateAllBundles(ctx, "cluster_runtime_revision_changed")
+			}
+			if sourceConsumerMountSvc != nil {
+				sourceConsumerMountSvc.invalidateSourceConsumerFrontendMounts()
 			}
 			wasm.InvalidateAllCache(ctx)
 			if i18nSvc != nil {
@@ -74,6 +78,13 @@ type pluginRuntimeIntegrationRefresher interface {
 type pluginRuntimeFrontendInvalidator interface {
 	// InvalidateAllBundles removes every cached runtime frontend bundle.
 	InvalidateAllBundles(ctx context.Context, reason string)
+}
+
+// pluginRuntimeSourceConsumerMountInvalidator narrows the source-plugin
+// consumer frontend mount index invalidation dependency.
+type pluginRuntimeSourceConsumerMountInvalidator interface {
+	// invalidateSourceConsumerFrontendMounts clears the local consumer mount index.
+	invalidateSourceConsumerFrontendMounts()
 }
 
 // ensureRuntimeCacheFresh synchronizes plugin runtime caches with the shared

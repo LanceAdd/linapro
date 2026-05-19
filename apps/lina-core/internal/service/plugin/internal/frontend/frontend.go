@@ -5,9 +5,19 @@ package frontend
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
 
 	"lina-core/internal/model/entity"
 	"lina-core/internal/service/plugin/internal/catalog"
+)
+
+const (
+	// CacheControlRevalidate allows browser storage but requires ETag validation before reuse.
+	CacheControlRevalidate = "no-cache"
+	// CacheControlStaticRevalidate keeps plugin static assets correct across same-version refreshes.
+	CacheControlStaticRevalidate = CacheControlRevalidate
 )
 
 // RuntimeFrontendAssetOutput contains one resolved frontend asset ready to be served.
@@ -16,6 +26,10 @@ type RuntimeFrontendAssetOutput struct {
 	Content []byte
 	// ContentType is the HTTP Content-Type header value returned to browsers.
 	ContentType string
+	// ETag is a strong HTTP validator derived from asset identity and content.
+	ETag string
+	// CacheControl is the HTTP Cache-Control policy for this asset.
+	CacheControl string
 }
 
 // Service defines the frontend service contract.
@@ -62,4 +76,26 @@ type serviceImpl struct {
 // New creates a frontend Service backed by the shared plugin catalog.
 func New(catalogSvc catalog.Service) Service {
 	return &serviceImpl{catalogSvc: catalogSvc}
+}
+
+// BuildAssetETag returns a strong ETag derived from asset identity parts and
+// the current content bytes.
+func BuildAssetETag(content []byte, identityParts ...string) string {
+	hasher := sha256.New()
+	for _, part := range identityParts {
+		hasher.Write([]byte(strings.TrimSpace(part)))
+		hasher.Write([]byte{0})
+	}
+	hasher.Write(content)
+	return `"` + hex.EncodeToString(hasher.Sum(nil)) + `"`
+}
+
+// CacheControlForContentType returns the default cache policy for a plugin
+// frontend asset. Plugin URLs do not include release checksums yet, so even
+// static assets revalidate to stay correct after same-version refreshes.
+func CacheControlForContentType(contentType string) string {
+	if strings.Contains(strings.ToLower(strings.TrimSpace(contentType)), "text/html") {
+		return CacheControlRevalidate
+	}
+	return CacheControlStaticRevalidate
 }

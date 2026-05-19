@@ -62,6 +62,47 @@ type (
 
 	// RuntimeFrontendAssetOutput contains one resolved frontend asset ready to be served.
 	RuntimeFrontendAssetOutput = frontend.RuntimeFrontendAssetOutput
+	// SourceConsumerFrontendAssetOutput contains one source-plugin consumer frontend asset ready to be served.
+	SourceConsumerFrontendAssetOutput = frontend.RuntimeFrontendAssetOutput
+	// SourceConsumerFrontendMountAssetOutput contains one source-plugin consumer frontend asset resolved by mount path.
+	SourceConsumerFrontendMountAssetOutput = frontend.RuntimeFrontendAssetOutput
+
+	// ConsumerSurfaceSnapshot describes the host-governed source-plugin
+	// consumer-facing projection.
+	ConsumerSurfaceSnapshot struct {
+		// Plugins contains one source-plugin projection per plugin with consumer-facing capabilities.
+		Plugins []*ConsumerSurfacePluginSnapshot
+	}
+
+	// ConsumerSurfacePluginSnapshot describes one source plugin's consumer-facing projection.
+	ConsumerSurfacePluginSnapshot struct {
+		// PluginID is the source plugin identifier.
+		PluginID string
+		// Version is the manifest version discovered by the running host.
+		Version string
+		// Enabled reports whether the plugin can currently expose business entries.
+		Enabled bool
+		// TenantAware reports whether the plugin participates in tenant governance.
+		TenantAware bool
+		// ScopeNature is the normalized tenant governance scope declaration.
+		ScopeNature string
+		// DefaultInstallMode is the normalized install mode declaration.
+		DefaultInstallMode string
+		// ConsumerFrontend contains the optional consumer-facing frontend mount projection.
+		ConsumerFrontend *ConsumerSurfaceFrontendSnapshot
+	}
+
+	// ConsumerSurfaceFrontendSnapshot describes one source-plugin consumer-facing frontend mount.
+	ConsumerSurfaceFrontendSnapshot struct {
+		// MountPath is the user-facing stable frontend mount path.
+		MountPath string
+		// Index is the plugin-relative entry asset.
+		Index string
+		// SPAFallback reports whether clean child routes fall back to Index.
+		SPAFallback bool
+		// AssetCount is the number of declared frontend/consumer assets.
+		AssetCount int
+	}
 
 	// DynamicRouteMetadata stores generic metadata for dynamic routes.
 	DynamicRouteMetadata = runtime.DynamicRouteMetadata
@@ -311,6 +352,38 @@ type FrontendAssetService interface {
 	) (*RuntimeFrontendAssetOutput, error)
 	// BuildRuntimeFrontendPublicBaseURL returns the public base URL for a plugin's hosted frontend assets.
 	BuildRuntimeFrontendPublicBaseURL(pluginID string, version string) string
+	// ResolveSourceConsumerFrontendAsset resolves one enabled source-plugin consumer frontend asset for public serving.
+	ResolveSourceConsumerFrontendAsset(
+		ctx context.Context,
+		pluginID string,
+		version string,
+		relativePath string,
+	) (*SourceConsumerFrontendAssetOutput, error)
+	// ResolveSourceConsumerFrontendMountAsset resolves one enabled source-plugin consumer frontend asset by user-facing mount path.
+	ResolveSourceConsumerFrontendMountAsset(
+		ctx context.Context,
+		requestPath string,
+	) (*SourceConsumerFrontendMountAssetOutput, error)
+	// BuildSourceConsumerFrontendPublicBaseURL returns the public base URL for source-plugin consumer assets.
+	BuildSourceConsumerFrontendPublicBaseURL(pluginID string, version string) string
+}
+
+// IsSourceConsumerFrontendMountNotFound reports whether a mount-resolution
+// error means the request path does not belong to any declared consumer mount.
+func IsSourceConsumerFrontendMountNotFound(err error) bool {
+	return isSourceConsumerFrontendMountNotFound(err)
+}
+
+// IsSourceConsumerFrontendMountDisabled reports whether a matched consumer
+// frontend mount belongs to a plugin that is not currently enabled.
+func IsSourceConsumerFrontendMountDisabled(err error) bool {
+	return isSourceConsumerFrontendMountDisabled(err)
+}
+
+// IsSourceConsumerFrontendMountAssetNotFound reports whether a matched
+// consumer frontend mount could not resolve the requested asset.
+func IsSourceConsumerFrontendMountAssetNotFound(err error) bool {
+	return isSourceConsumerFrontendMountAssetNotFound(err)
 }
 
 // SourceIntegrationService defines host integration operations for source plugins.
@@ -363,6 +436,14 @@ type SourceIntegrationService interface {
 	FilterMenus(ctx context.Context, menus []*entity.SysMenu) []*entity.SysMenu
 	// FilterPermissionMenus filters permission menus based on plugin enablement.
 	FilterPermissionMenus(ctx context.Context, menus []*entity.SysMenu) []*entity.SysMenu
+}
+
+// ConsumerSurfaceGovernanceService defines host-governed source-plugin consumer-facing projections.
+type ConsumerSurfaceGovernanceService interface {
+	// BuildConsumerSurfaceSnapshot builds an on-demand host governance snapshot
+	// for source-plugin frontend mounts, enablement, version, and tenant
+	// governance declarations.
+	BuildConsumerSurfaceSnapshot(ctx context.Context) (*ConsumerSurfaceSnapshot, error)
 }
 
 // ResourceQueryService defines plugin-owned backend resource query operations.
@@ -516,6 +597,7 @@ type Service interface {
 	DataCommentService
 	FrontendAssetService
 	SourceIntegrationService
+	ConsumerSurfaceGovernanceService
 	ResourceQueryService
 	LifecycleManagementService
 	SourceUpgradeGovernanceService
@@ -562,6 +644,12 @@ type serviceImpl struct {
 	runtimeUpgradeLocksMu sync.Mutex
 	// runtimeUpgradeLocks serializes explicit runtime upgrades per plugin in the current process.
 	runtimeUpgradeLocks map[string]*sync.Mutex
+	// sourceConsumerFrontendIndexMu protects the source-plugin consumer frontend resource index.
+	sourceConsumerFrontendIndexMu sync.RWMutex
+	// sourceConsumerFrontendIndexReady reports whether the resource index has been built for this process.
+	sourceConsumerFrontendIndexReady bool
+	// sourceConsumerFrontendIndex holds manifest-declared source-plugin consumer frontend resources.
+	sourceConsumerFrontendIndex *sourceConsumerFrontendResourceIndex
 }
 
 // New creates and returns a new plugin Service.
@@ -598,19 +686,12 @@ func New(
 	}
 
 	var (
-		catalogSvc       = catalog.New(configProvider)
-		lifecycleSvc     = lifecycle.New(catalogSvc)
-		frontendSvc      = frontend.New(catalogSvc)
-		openapiSvc       = openapi.New(catalogSvc)
-		runtimeSvc       = runtime.New(catalogSvc, lifecycleSvc, frontendSvc, openapiSvc, i18nSvc)
-		integrationSvc   = integration.New(catalogSvc)
-		cacheRevisionCtl = newRuntimeCacheRevisionController(
-			topo,
-			cacheCoordSvc,
-			integrationSvc,
-			frontendSvc,
-			i18nSvc,
-		)
+		catalogSvc     = catalog.New(configProvider)
+		lifecycleSvc   = lifecycle.New(catalogSvc)
+		frontendSvc    = frontend.New(catalogSvc)
+		openapiSvc     = openapi.New(catalogSvc)
+		runtimeSvc     = runtime.New(catalogSvc, lifecycleSvc, frontendSvc, openapiSvc, i18nSvc)
+		integrationSvc = integration.New(catalogSvc)
 	)
 
 	// Wire cross-package dependencies via setter injection so each sub-package
@@ -641,19 +722,26 @@ func New(
 	runtimeSvc.SetSessionStore(sessionStore)
 
 	service := &serviceImpl{
-		configSvc:                configProvider,
-		topology:                 topo,
-		catalogSvc:               catalogSvc,
-		lifecycleSvc:             lifecycleSvc,
-		runtimeSvc:               runtimeSvc,
-		integrationSvc:           integrationSvc,
-		frontendSvc:              frontendSvc,
-		openapiSvc:               openapiSvc,
-		i18nSvc:                  i18nSvc,
-		runtimeCacheRevisionCtrl: cacheRevisionCtl,
-		runtimeUpgradeLockStore:  runtimeUpgradeLockStore,
-		runtimeUpgradeLocks:      make(map[string]*sync.Mutex),
+		configSvc:               configProvider,
+		topology:                topo,
+		catalogSvc:              catalogSvc,
+		lifecycleSvc:            lifecycleSvc,
+		runtimeSvc:              runtimeSvc,
+		integrationSvc:          integrationSvc,
+		frontendSvc:             frontendSvc,
+		openapiSvc:              openapiSvc,
+		i18nSvc:                 i18nSvc,
+		runtimeUpgradeLockStore: runtimeUpgradeLockStore,
+		runtimeUpgradeLocks:     make(map[string]*sync.Mutex),
 	}
+	service.runtimeCacheRevisionCtrl = newRuntimeCacheRevisionController(
+		topo,
+		cacheCoordSvc,
+		integrationSvc,
+		frontendSvc,
+		i18nSvc,
+		service,
+	)
 	runtimeSvc.SetRuntimeCacheChangeNotifier(service)
 	runtimeSvc.SetDependencyValidator(service)
 	service.sourceUpgradeSvc = sourceupgradeinternal.New(catalogSvc, lifecycleSvc, runtimeSvc, integrationSvc, i18nSvc, service)

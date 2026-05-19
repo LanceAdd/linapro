@@ -64,6 +64,8 @@ type Manifest struct {
 	License string `yaml:"license"`
 	// Dependencies declares host and plugin dependency constraints.
 	Dependencies *DependencySpec `yaml:"dependencies"`
+	// Consumer holds consumer-facing capabilities declared by the plugin.
+	Consumer *ConsumerSpec `yaml:"consumer,omitempty" json:"consumer,omitempty"`
 	// Menus holds manifest-declared host menu entries.
 	Menus []*MenuSpec `yaml:"menus"`
 	// ManifestPath is the filesystem path to the plugin.yaml file (source plugins).
@@ -88,6 +90,24 @@ type Manifest struct {
 	RuntimeArtifact *ArtifactSpec
 	// SourcePlugin is the embedded source-plugin registration for source plugins.
 	SourcePlugin pluginhost.SourcePluginDefinition
+}
+
+// ConsumerSpec groups consumer-facing declarations for one plugin.
+type ConsumerSpec struct {
+	// Frontend declares optional browser-facing frontend hosting settings.
+	Frontend *ConsumerFrontendSpec `yaml:"frontend,omitempty" json:"frontend,omitempty"`
+}
+
+// ConsumerFrontendSpec declares how a source plugin exposes frontend/consumer assets.
+type ConsumerFrontendSpec struct {
+	// Enabled reports whether the consumer frontend mount is active. Missing means enabled when a mount path is present.
+	Enabled *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	// MountPath is the stable user-facing mount path, such as /portal.
+	MountPath string `yaml:"mount_path,omitempty" json:"mountPath,omitempty"`
+	// Index is the consumer frontend entry asset. Missing defaults to index.html.
+	Index string `yaml:"index,omitempty" json:"index,omitempty"`
+	// SPAFallback reports whether clean child routes fall back to Index. Missing defaults to false.
+	SPAFallback *bool `yaml:"spa_fallback,omitempty" json:"spaFallback,omitempty"`
 }
 
 // SupportsTenantGovernance reports whether this manifest can use tenant-level
