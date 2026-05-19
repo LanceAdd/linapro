@@ -329,38 +329,39 @@ func (s *serviceImpl) buildManifestSnapshotModel(manifest *Manifest) (*ManifestS
 	}
 
 	snapshot := &ManifestSnapshot{
-		ID:                        manifest.ID,
-		Name:                      manifest.Name,
-		Version:                   manifest.Version,
-		Type:                      manifest.Type,
-		ScopeNature:               manifest.ScopeNature,
-		SupportsMultiTenant:       manifest.SupportsTenantGovernance(),
-		DefaultInstallMode:        manifest.DefaultInstallMode,
-		Description:               manifest.Description,
-		Author:                    manifest.Author,
-		Homepage:                  manifest.Homepage,
-		License:                   manifest.License,
-		Dependencies:              CloneDependencySpec(manifest.Dependencies),
-		RuntimeKind:               buildDynamicKind(manifest),
-		RuntimeABIVersion:         buildDynamicABIVersion(manifest),
-		ManifestDeclared:          s.isManifestDeclared(manifest),
-		InstallSQLCount:           s.countSQLAssets(manifest, MigrationDirectionInstall),
-		UninstallSQLCount:         s.countSQLAssets(manifest, MigrationDirectionUninstall),
-		MockSQLCount:              s.countSQLAssets(manifest, MigrationDirectionMock),
-		FrontendPageCount:         s.buildFrontendPageCount(manifest),
-		FrontendSlotCount:         s.buildFrontendSlotCount(manifest),
-		MenuCount:                 len(manifest.Menus),
-		BackendHookCount:          len(manifest.Hooks),
-		LifecycleHandlerCount:     len(manifest.LifecycleHandlers),
-		ResourceSpecCount:         len(manifest.BackendResources),
-		RouteCount:                len(manifest.Routes),
-		RouteExecutionEnabled:     buildDynamicRouteExecutionEnabled(manifest),
-		RouteRequestCodec:         buildDynamicRouteRequestCodec(manifest),
-		RouteResponseCodec:        buildDynamicRouteResponseCodec(manifest),
-		RuntimeFrontendAssetCount: buildDynamicFrontendAssetCount(manifest),
-		RuntimeSQLAssetCount:      buildDynamicSQLAssetCount(manifest),
-		RequestedHostServices:     requestedHostServices,
-		HostServiceAuthRequired:   HasResourceScopedHostServices(manifest.HostServices),
+		ID:                         manifest.ID,
+		Name:                       manifest.Name,
+		Version:                    manifest.Version,
+		Type:                       manifest.Type,
+		ScopeNature:                manifest.ScopeNature,
+		SupportsMultiTenant:        manifest.SupportsTenantGovernance(),
+		DefaultInstallMode:         manifest.DefaultInstallMode,
+		Description:                manifest.Description,
+		Author:                     manifest.Author,
+		Homepage:                   manifest.Homepage,
+		License:                    manifest.License,
+		Dependencies:               CloneDependencySpec(manifest.Dependencies),
+		RuntimeKind:                buildDynamicKind(manifest),
+		RuntimeABIVersion:          buildDynamicABIVersion(manifest),
+		ManifestDeclared:           s.isManifestDeclared(manifest),
+		InstallSQLCount:            s.countSQLAssets(manifest, MigrationDirectionInstall),
+		UninstallSQLCount:          s.countSQLAssets(manifest, MigrationDirectionUninstall),
+		MockSQLCount:               s.countSQLAssets(manifest, MigrationDirectionMock),
+		FrontendPageCount:          s.buildFrontendPageCount(manifest),
+		FrontendSlotCount:          s.buildFrontendSlotCount(manifest),
+		ConsumerFrontendAssetCount: s.buildConsumerFrontendAssetCount(manifest),
+		MenuCount:                  len(manifest.Menus),
+		BackendHookCount:           len(manifest.Hooks),
+		LifecycleHandlerCount:      len(manifest.LifecycleHandlers),
+		ResourceSpecCount:          len(manifest.BackendResources),
+		RouteCount:                 len(manifest.Routes),
+		RouteExecutionEnabled:      buildDynamicRouteExecutionEnabled(manifest),
+		RouteRequestCodec:          buildDynamicRouteRequestCodec(manifest),
+		RouteResponseCodec:         buildDynamicRouteResponseCodec(manifest),
+		RuntimeFrontendAssetCount:  buildDynamicFrontendAssetCount(manifest),
+		RuntimeSQLAssetCount:       buildDynamicSQLAssetCount(manifest),
+		RequestedHostServices:      requestedHostServices,
+		HostServiceAuthRequired:    HasResourceScopedHostServices(manifest.HostServices),
 	}
 	if !snapshot.HostServiceAuthRequired {
 		authorizedHostServices, normalizeErr := pluginbridge.NormalizeHostServiceSpecs(snapshot.RequestedHostServices)
@@ -579,6 +580,14 @@ func (s *serviceImpl) buildFrontendSlotCount(manifest *Manifest) int {
 		return 0
 	}
 	return len(s.ListFrontendSlotPaths(manifest))
+}
+
+// buildConsumerFrontendAssetCount counts optional source-plugin consumer frontend assets.
+func (s *serviceImpl) buildConsumerFrontendAssetCount(manifest *Manifest) int {
+	if manifest == nil || NormalizeType(manifest.Type) != TypeSource {
+		return 0
+	}
+	return len(s.ListConsumerFrontendPaths(manifest))
 }
 
 // buildDynamicKind returns the runtime kind recorded in the embedded artifact.

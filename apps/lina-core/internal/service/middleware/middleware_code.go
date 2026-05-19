@@ -66,4 +66,18 @@ var (
 		"Uploaded file is too large",
 		gcode.CodeInvalidParameter,
 	)
+	// CodeMiddlewareConsumerPluginRequired reports that a consumer route could not resolve its plugin owner.
+	CodeMiddlewareConsumerPluginRequired = bizerr.MustDefineWithKey(
+		"CONSUMER_PLUGIN_REQUIRED",
+		"error.consumer.plugin.required",
+		"Consumer plugin route is invalid",
+		gcode.CodeInvalidParameter,
+	)
+	// CodeMiddlewareConsumerTenantRequired reports that a tenant-scoped consumer request lacks tenant context.
+	CodeMiddlewareConsumerTenantRequired = bizerr.MustDefineWithKey(
+		"CONSUMER_TENANT_REQUIRED",
+		"error.consumer.tenant.required",
+		"Consumer tenant context is required",
+		gcode.CodeNotAuthorized,
+	)
 )

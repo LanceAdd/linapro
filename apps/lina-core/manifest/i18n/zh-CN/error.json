@@ -36,6 +36,18 @@
         }
       }
     },
+    "consumer": {
+      "auth": {
+        "invalid": "C端认证Token无效",
+        "required": "C端接口需要登录"
+      },
+      "plugin": {
+        "required": "C端插件路由无效"
+      },
+      "tenant": {
+        "required": "C端租户上下文不能为空"
+      }
+    },
     "sysconfig": {
       "builtin": {
         "delete": {

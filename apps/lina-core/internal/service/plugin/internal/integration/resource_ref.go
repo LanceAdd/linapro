@@ -21,41 +21,44 @@ import (
 const (
 	pluginResourceIdentitySeparator = ":"
 
-	pluginResourceKeyManifest               = "manifest"
-	pluginResourceKeyBackendEntry           = "backend-entry"
-	pluginResourceKeyRuntimeWasmArtifact    = "runtime-wasm-artifact"
-	pluginResourceKeyRuntimeFrontendAssets  = "runtime-frontend-assets"
-	pluginResourceKeyInstallSQLBundle       = "install-sql-bundle"
-	pluginResourceKeyUninstallSQLBundle     = "uninstall-sql-bundle"
-	pluginResourceKeyMockSQLBundle          = "mock-sql-bundle"
-	pluginResourceKeyFrontendPages          = "frontend-pages"
-	pluginResourceKeyFrontendSlots          = "frontend-slots"
-	pluginResourceOwnerKeyPluginManifest    = "plugin-manifest"
-	pluginResourceOwnerKeyBackendEntry      = "source-plugin-backend-entry"
-	pluginResourceOwnerKeyRuntimeArtifact   = "runtime-wasm-artifact"
-	pluginResourceOwnerKeyRuntimeFrontend   = "runtime-frontend-assets"
-	pluginResourceOwnerKeyInstallSQL        = "install-sql-summary"
-	pluginResourceOwnerKeyUninstallSQL      = "uninstall-sql-summary"
-	pluginResourceOwnerKeyMockSQL           = "mock-sql-summary"
-	pluginResourceOwnerKeyFrontendPage      = "frontend-page-summary"
-	pluginResourceOwnerKeyFrontendSlot      = "frontend-slot-summary"
-	pluginResourceOwnerKeyManifestMenu      = "manifest-menu"
-	pluginResourceSummaryLabelRuntimeAssets = "runtime frontend assets"
-	pluginResourceSummaryLabelInstallSQL    = "install SQL assets"
-	pluginResourceSummaryLabelUninstallSQL  = "uninstall SQL assets"
-	pluginResourceSummaryLabelMockSQL       = "mock-data SQL assets"
-	pluginResourceSummaryLabelFrontendPages = "frontend page assets"
-	pluginResourceSummaryLabelFrontendSlots = "frontend slot assets"
-	pluginResourceRemarkManifest            = "One plugin manifest is declared and validated by the host."
-	pluginResourceRemarkBackendEntry        = "One source-plugin backend registration entry is compiled into the host binary."
-	pluginResourceRemarkMenuFallback        = "The host discovered one manifest-declared plugin menu."
-	pluginResourceMethodSummaryFallback     = "no methods"
-	pluginResourceSummaryRemarkFormat       = "The host discovered %d %s for the current plugin release."
-	pluginRuntimeArtifactRemarkFormat       = "The host validated one %s runtime artifact using ABI %s with %d embedded frontend assets, %d install SQL assets, %d uninstall SQL assets, and %d dynamic routes declared."
-	pluginMenuRemarkFormat                  = "The host discovered one manifest-declared plugin menu named %q with type %s."
-	hostServiceResourceRemarkFormat         = "The host discovered one governed host service resource ref %q for service %s with methods [%s]."
-	hostServicePathRemarkFormat             = "The host discovered one governed host service path %q for service %s with methods [%s]."
-	hostServiceTableRemarkFormat            = "The host discovered one governed host service table %q for service %s with methods [%s]."
+	pluginResourceKeyManifest                  = "manifest"
+	pluginResourceKeyBackendEntry              = "backend-entry"
+	pluginResourceKeyRuntimeWasmArtifact       = "runtime-wasm-artifact"
+	pluginResourceKeyRuntimeFrontendAssets     = "runtime-frontend-assets"
+	pluginResourceKeyInstallSQLBundle          = "install-sql-bundle"
+	pluginResourceKeyUninstallSQLBundle        = "uninstall-sql-bundle"
+	pluginResourceKeyMockSQLBundle             = "mock-sql-bundle"
+	pluginResourceKeyFrontendPages             = "frontend-pages"
+	pluginResourceKeyFrontendSlots             = "frontend-slots"
+	pluginResourceKeyConsumerFrontend          = "consumer-frontend-assets"
+	pluginResourceOwnerKeyPluginManifest       = "plugin-manifest"
+	pluginResourceOwnerKeyBackendEntry         = "source-plugin-backend-entry"
+	pluginResourceOwnerKeyRuntimeArtifact      = "runtime-wasm-artifact"
+	pluginResourceOwnerKeyRuntimeFrontend      = "runtime-frontend-assets"
+	pluginResourceOwnerKeyInstallSQL           = "install-sql-summary"
+	pluginResourceOwnerKeyUninstallSQL         = "uninstall-sql-summary"
+	pluginResourceOwnerKeyMockSQL              = "mock-sql-summary"
+	pluginResourceOwnerKeyFrontendPage         = "frontend-page-summary"
+	pluginResourceOwnerKeyFrontendSlot         = "frontend-slot-summary"
+	pluginResourceOwnerKeyConsumerFrontend     = "consumer-frontend-summary"
+	pluginResourceOwnerKeyManifestMenu         = "manifest-menu"
+	pluginResourceSummaryLabelRuntimeAssets    = "runtime frontend assets"
+	pluginResourceSummaryLabelInstallSQL       = "install SQL assets"
+	pluginResourceSummaryLabelUninstallSQL     = "uninstall SQL assets"
+	pluginResourceSummaryLabelMockSQL          = "mock-data SQL assets"
+	pluginResourceSummaryLabelFrontendPages    = "frontend page assets"
+	pluginResourceSummaryLabelFrontendSlots    = "frontend slot assets"
+	pluginResourceSummaryLabelConsumerFrontend = "consumer frontend assets"
+	pluginResourceRemarkManifest               = "One plugin manifest is declared and validated by the host."
+	pluginResourceRemarkBackendEntry           = "One source-plugin backend registration entry is compiled into the host binary."
+	pluginResourceRemarkMenuFallback           = "The host discovered one manifest-declared plugin menu."
+	pluginResourceMethodSummaryFallback        = "no methods"
+	pluginResourceSummaryRemarkFormat          = "The host discovered %d %s for the current plugin release."
+	pluginRuntimeArtifactRemarkFormat          = "The host validated one %s runtime artifact using ABI %s with %d embedded frontend assets, %d install SQL assets, %d uninstall SQL assets, and %d dynamic routes declared."
+	pluginMenuRemarkFormat                     = "The host discovered one manifest-declared plugin menu named %q with type %s."
+	hostServiceResourceRemarkFormat            = "The host discovered one governed host service resource ref %q for service %s with methods [%s]."
+	hostServicePathRemarkFormat                = "The host discovered one governed host service path %q for service %s with methods [%s]."
+	hostServiceTableRemarkFormat               = "The host discovered one governed host service table %q for service %s with methods [%s]."
 )
 
 // SyncPluginResourceReferences keeps sys_plugin_resource_ref aligned with the
@@ -277,6 +280,7 @@ func (s *serviceImpl) buildPluginResourceRefDescriptors(manifest *catalog.Manife
 	mockSQLCount := s.countPluginMockSQLAssets(manifest)
 	frontendPagePaths := s.catalogSvc.ListFrontendPagePaths(manifest)
 	frontendSlotPaths := s.catalogSvc.ListFrontendSlotPaths(manifest)
+	consumerFrontendPaths := s.catalogSvc.ListConsumerFrontendPaths(manifest)
 
 	descriptors := []*catalog.ResourceRefDescriptor{
 		newResourceRefDescriptor(
@@ -361,6 +365,15 @@ func (s *serviceImpl) buildPluginResourceRefDescriptors(manifest *catalog.Manife
 			catalog.ResourceOwnerTypeFrontendSlotEntry,
 			pluginResourceOwnerKeyFrontendSlot,
 			buildPluginResourceSummaryRemark(pluginResourceSummaryLabelFrontendSlots, len(frontendSlotPaths)),
+		))
+	}
+	if len(consumerFrontendPaths) > 0 {
+		descriptors = append(descriptors, newResourceRefDescriptor(
+			catalog.ResourceKindConsumerFrontend,
+			pluginResourceKeyConsumerFrontend,
+			catalog.ResourceOwnerTypeConsumerFrontend,
+			pluginResourceOwnerKeyConsumerFrontend,
+			buildPluginResourceSummaryRemark(pluginResourceSummaryLabelConsumerFrontend, len(consumerFrontendPaths)),
 		))
 	}
 	for _, menu := range manifest.Menus {

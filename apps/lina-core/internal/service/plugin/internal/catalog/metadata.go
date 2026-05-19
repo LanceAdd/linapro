@@ -95,25 +95,26 @@ const (
 	MigrationExecutionStatusFailed    MigrationExecutionStatus = "failed"
 
 	// ResourceKind values.
-	ResourceKindManifest        ResourceKind = "manifest"
-	ResourceKindBackendEntry    ResourceKind = "backend_entry"
-	ResourceKindRuntimeWasm     ResourceKind = "runtime_wasm"
-	ResourceKindRuntimeFrontend ResourceKind = "runtime_frontend"
-	ResourceKindFrontendPage    ResourceKind = "frontend_page"
-	ResourceKindFrontendSlot    ResourceKind = "frontend_slot"
-	ResourceKindMenu            ResourceKind = "menu"
-	ResourceKindInstallSQL      ResourceKind = "install_sql"
-	ResourceKindUninstallSQL    ResourceKind = "uninstall_sql"
-	ResourceKindMockSQL         ResourceKind = "mock_sql"
-	ResourceKindHostStorage     ResourceKind = "host_storage"
-	ResourceKindHostUpstream    ResourceKind = "host_upstream"
-	ResourceKindHostData        ResourceKind = "host_data_table"
-	ResourceKindHostCache       ResourceKind = "host_cache"
-	ResourceKindHostLock        ResourceKind = "host_lock"
-	ResourceKindHostSecret      ResourceKind = "host_secret"
-	ResourceKindHostEventTopic  ResourceKind = "host_event_topic"
-	ResourceKindHostQueue       ResourceKind = "host_queue"
-	ResourceKindHostNotify      ResourceKind = "host_notify_channel"
+	ResourceKindManifest         ResourceKind = "manifest"
+	ResourceKindBackendEntry     ResourceKind = "backend_entry"
+	ResourceKindRuntimeWasm      ResourceKind = "runtime_wasm"
+	ResourceKindRuntimeFrontend  ResourceKind = "runtime_frontend"
+	ResourceKindFrontendPage     ResourceKind = "frontend_page"
+	ResourceKindFrontendSlot     ResourceKind = "frontend_slot"
+	ResourceKindConsumerFrontend ResourceKind = "consumer_frontend"
+	ResourceKindMenu             ResourceKind = "menu"
+	ResourceKindInstallSQL       ResourceKind = "install_sql"
+	ResourceKindUninstallSQL     ResourceKind = "uninstall_sql"
+	ResourceKindMockSQL          ResourceKind = "mock_sql"
+	ResourceKindHostStorage      ResourceKind = "host_storage"
+	ResourceKindHostUpstream     ResourceKind = "host_upstream"
+	ResourceKindHostData         ResourceKind = "host_data_table"
+	ResourceKindHostCache        ResourceKind = "host_cache"
+	ResourceKindHostLock         ResourceKind = "host_lock"
+	ResourceKindHostSecret       ResourceKind = "host_secret"
+	ResourceKindHostEventTopic   ResourceKind = "host_event_topic"
+	ResourceKindHostQueue        ResourceKind = "host_queue"
+	ResourceKindHostNotify       ResourceKind = "host_notify_channel"
 
 	// ResourceOwnerType values.
 	ResourceOwnerTypeFile                ResourceOwnerType = "file"
@@ -125,6 +126,7 @@ const (
 	ResourceOwnerTypeMockSQL             ResourceOwnerType = "mock-sql"
 	ResourceOwnerTypeFrontendPageEntry   ResourceOwnerType = "frontend-page-entry"
 	ResourceOwnerTypeFrontendSlotEntry   ResourceOwnerType = "frontend-slot-entry"
+	ResourceOwnerTypeConsumerFrontend    ResourceOwnerType = "consumer-frontend"
 	ResourceOwnerTypeMenuEntry           ResourceOwnerType = "menu-entry"
 	ResourceOwnerTypeHostServiceResource ResourceOwnerType = "host-service-resource"
 
@@ -261,41 +263,42 @@ func (value DependencyInstallMode) String() string { return string(value) }
 
 // ManifestSnapshot stores the review-friendly manifest snapshot persisted in sys_plugin_release.
 type ManifestSnapshot struct {
-	ID                        string                          `yaml:"id"`
-	Name                      string                          `yaml:"name"`
-	Version                   string                          `yaml:"version"`
-	Type                      string                          `yaml:"type"`
-	ScopeNature               string                          `yaml:"scopeNature,omitempty"`
-	SupportsMultiTenant       bool                            `yaml:"supportsMultiTenant,omitempty"`
-	DefaultInstallMode        string                          `yaml:"defaultInstallMode,omitempty"`
-	Description               string                          `yaml:"description,omitempty"`
-	Author                    string                          `yaml:"author,omitempty"`
-	Homepage                  string                          `yaml:"homepage,omitempty"`
-	License                   string                          `yaml:"license,omitempty"`
-	Dependencies              *DependencySpec                 `yaml:"dependencies,omitempty"`
-	RuntimeKind               string                          `yaml:"runtimeKind,omitempty"`
-	RuntimeABIVersion         string                          `yaml:"runtimeAbiVersion,omitempty"`
-	ManifestDeclared          bool                            `yaml:"manifestDeclared"`
-	InstallSQLCount           int                             `yaml:"installSqlCount,omitempty"`
-	UninstallSQLCount         int                             `yaml:"uninstallSqlCount,omitempty"`
-	MockSQLCount              int                             `yaml:"mockSqlCount,omitempty"`
-	FrontendPageCount         int                             `yaml:"frontendPageCount,omitempty"`
-	FrontendSlotCount         int                             `yaml:"frontendSlotCount,omitempty"`
-	MenuCount                 int                             `yaml:"menuCount,omitempty"`
-	BackendHookCount          int                             `yaml:"backendHookCount,omitempty"`
-	LifecycleHandlerCount     int                             `yaml:"lifecycleHandlerCount,omitempty"`
-	ResourceSpecCount         int                             `yaml:"resourceSpecCount,omitempty"`
-	RouteCount                int                             `yaml:"routeCount,omitempty"`
-	RouteExecutionEnabled     bool                            `yaml:"routeExecutionEnabled,omitempty"`
-	RouteRequestCodec         string                          `yaml:"routeRequestCodec,omitempty"`
-	RouteResponseCodec        string                          `yaml:"routeResponseCodec,omitempty"`
-	RuntimeFrontendAssetCount int                             `yaml:"runtimeFrontendAssetCount,omitempty"`
-	RuntimeSQLAssetCount      int                             `yaml:"runtimeSqlAssetCount,omitempty"`
-	RequestedHostServices     []*pluginbridge.HostServiceSpec `yaml:"requestedHostServices,omitempty"`
-	AuthorizedHostServices    []*pluginbridge.HostServiceSpec `yaml:"authorizedHostServices,omitempty"`
-	HostServiceAuthRequired   bool                            `yaml:"hostServiceAuthRequired,omitempty"`
-	HostServiceAuthConfirmed  bool                            `yaml:"hostServiceAuthConfirmed,omitempty"`
-	UninstallPurgeStorageData *bool                           `yaml:"uninstallPurgeStorageData,omitempty"`
+	ID                         string                          `yaml:"id"`
+	Name                       string                          `yaml:"name"`
+	Version                    string                          `yaml:"version"`
+	Type                       string                          `yaml:"type"`
+	ScopeNature                string                          `yaml:"scopeNature,omitempty"`
+	SupportsMultiTenant        bool                            `yaml:"supportsMultiTenant,omitempty"`
+	DefaultInstallMode         string                          `yaml:"defaultInstallMode,omitempty"`
+	Description                string                          `yaml:"description,omitempty"`
+	Author                     string                          `yaml:"author,omitempty"`
+	Homepage                   string                          `yaml:"homepage,omitempty"`
+	License                    string                          `yaml:"license,omitempty"`
+	Dependencies               *DependencySpec                 `yaml:"dependencies,omitempty"`
+	RuntimeKind                string                          `yaml:"runtimeKind,omitempty"`
+	RuntimeABIVersion          string                          `yaml:"runtimeAbiVersion,omitempty"`
+	ManifestDeclared           bool                            `yaml:"manifestDeclared"`
+	InstallSQLCount            int                             `yaml:"installSqlCount,omitempty"`
+	UninstallSQLCount          int                             `yaml:"uninstallSqlCount,omitempty"`
+	MockSQLCount               int                             `yaml:"mockSqlCount,omitempty"`
+	FrontendPageCount          int                             `yaml:"frontendPageCount,omitempty"`
+	FrontendSlotCount          int                             `yaml:"frontendSlotCount,omitempty"`
+	ConsumerFrontendAssetCount int                             `yaml:"consumerFrontendAssetCount,omitempty"`
+	MenuCount                  int                             `yaml:"menuCount,omitempty"`
+	BackendHookCount           int                             `yaml:"backendHookCount,omitempty"`
+	LifecycleHandlerCount      int                             `yaml:"lifecycleHandlerCount,omitempty"`
+	ResourceSpecCount          int                             `yaml:"resourceSpecCount,omitempty"`
+	RouteCount                 int                             `yaml:"routeCount,omitempty"`
+	RouteExecutionEnabled      bool                            `yaml:"routeExecutionEnabled,omitempty"`
+	RouteRequestCodec          string                          `yaml:"routeRequestCodec,omitempty"`
+	RouteResponseCodec         string                          `yaml:"routeResponseCodec,omitempty"`
+	RuntimeFrontendAssetCount  int                             `yaml:"runtimeFrontendAssetCount,omitempty"`
+	RuntimeSQLAssetCount       int                             `yaml:"runtimeSqlAssetCount,omitempty"`
+	RequestedHostServices      []*pluginbridge.HostServiceSpec `yaml:"requestedHostServices,omitempty"`
+	AuthorizedHostServices     []*pluginbridge.HostServiceSpec `yaml:"authorizedHostServices,omitempty"`
+	HostServiceAuthRequired    bool                            `yaml:"hostServiceAuthRequired,omitempty"`
+	HostServiceAuthConfirmed   bool                            `yaml:"hostServiceAuthConfirmed,omitempty"`
+	UninstallPurgeStorageData  *bool                           `yaml:"uninstallPurgeStorageData,omitempty"`
 }
 
 // PublishedManifestSnapshot converts a persisted manifest snapshot into the

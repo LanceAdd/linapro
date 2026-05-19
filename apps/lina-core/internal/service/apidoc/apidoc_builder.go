@@ -146,6 +146,7 @@ func (s *serviceImpl) addEnabledSourceRoutes(
 			)
 			continue
 		}
+		applySourceRouteSurfaceTags(document, binding)
 		projectedRouteSet[key] = struct{}{}
 	}
 }
@@ -235,4 +236,75 @@ func expandOpenAPIMethods(method string) []string {
 		return items
 	}
 	return []string{normalized}
+}
+
+// applySourceRouteSurfaceTags marks consumer plugin operations with a stable
+// service-surface tag and clears inherited host-admin security defaults.
+func applySourceRouteSurfaceTags(document *goai.OpenApiV3, binding pluginhost.SourceRouteBinding) {
+	if document == nil || binding.Surface != pluginhost.SurfaceConsumer {
+		return
+	}
+	pathItem, ok := document.Paths[binding.Path]
+	if !ok {
+		return
+	}
+	tag := "Consumer API / " + binding.PluginID
+	for _, method := range expandOpenAPIMethods(binding.Method) {
+		operation := openAPIOperationForMethod(&pathItem, method)
+		if operation == nil {
+			continue
+		}
+		clearConsumerOperationHostSecurity(operation)
+		if !hasOpenAPITag(operation.Tags, tag) {
+			operation.Tags = append([]string{tag}, operation.Tags...)
+		}
+	}
+	document.Paths[binding.Path] = pathItem
+}
+
+// clearConsumerOperationHostSecurity overrides the document-level BearerAuth
+// default with an empty operation security list so consumer authentication stays
+// plugin-owned instead of being advertised as host-admin JWT.
+func clearConsumerOperationHostSecurity(operation *goai.Operation) {
+	if operation == nil {
+		return
+	}
+	operation.Security = &goai.SecurityRequirements{}
+}
+
+// openAPIOperationForMethod returns the mutable operation for one HTTP method.
+func openAPIOperationForMethod(pathItem *goai.Path, method string) *goai.Operation {
+	if pathItem == nil {
+		return nil
+	}
+	switch strings.ToUpper(strings.TrimSpace(method)) {
+	case "GET":
+		return pathItem.Get
+	case "PUT":
+		return pathItem.Put
+	case "POST":
+		return pathItem.Post
+	case "DELETE":
+		return pathItem.Delete
+	case "OPTIONS":
+		return pathItem.Options
+	case "HEAD":
+		return pathItem.Head
+	case "PATCH":
+		return pathItem.Patch
+	case "TRACE":
+		return pathItem.Trace
+	default:
+		return nil
+	}
+}
+
+// hasOpenAPITag reports whether a tag list already contains tag.
+func hasOpenAPITag(tags []string, tag string) bool {
+	for _, item := range tags {
+		if item == tag {
+			return true
+		}
+	}
+	return false
 }

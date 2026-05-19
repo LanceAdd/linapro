@@ -126,8 +126,10 @@ func (s *serviceImpl) ResolveRuntimeFrontendAsset(
 		contentType,
 	)
 	return &RuntimeFrontendAssetOutput{
-		Content:     content,
-		ContentType: contentType,
+		Content:      content,
+		ContentType:  contentType,
+		ETag:         BuildAssetETag(content, "runtime", pluginID, version, relativePath),
+		CacheControl: CacheControlForContentType(contentType),
 	}, nil
 }
 

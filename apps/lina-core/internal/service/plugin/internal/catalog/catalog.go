@@ -142,6 +142,8 @@ type ManifestReader interface {
 	ReadSourcePluginManifestContent(manifest *Manifest) ([]byte, error)
 	// ReadSourcePluginAssetContent reads one asset relative path from an embedded or filesystem source plugin.
 	ReadSourcePluginAssetContent(manifest *Manifest, relativePath string) (string, error)
+	// ReadSourcePluginAssetBytes reads one asset body from an embedded or filesystem source plugin.
+	ReadSourcePluginAssetBytes(manifest *Manifest, relativePath string) ([]byte, error)
 	// LoadManifestFromYAML parses a plugin.yaml file at the given path into a Manifest.
 	LoadManifestFromYAML(filePath string, manifest *Manifest) error
 	// LoadManifestFromArtifactPath loads and validates a dynamic plugin manifest from
@@ -196,10 +198,14 @@ type FrontendAssetCatalog interface {
 	ListFrontendPagePaths(manifest *Manifest) []string
 	// ListFrontendSlotPaths returns the frontend slot source paths for a source plugin manifest.
 	ListFrontendSlotPaths(manifest *Manifest) []string
+	// ListConsumerFrontendPaths returns optional consumer frontend asset paths for a source plugin manifest.
+	ListConsumerFrontendPaths(manifest *Manifest) []string
 	// DiscoverPagePaths discovers plugin page source files by directory convention.
 	DiscoverPagePaths(rootDir string) []string
 	// DiscoverSlotPaths discovers plugin slot source files by directory convention.
 	DiscoverSlotPaths(rootDir string) []string
+	// DiscoverConsumerFrontendPaths discovers optional consumer frontend files by directory convention.
+	DiscoverConsumerFrontendPaths(rootDir string) []string
 }
 
 // Registry covers sys_plugin registry row reads and the lifecycle-state writes

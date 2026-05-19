@@ -68,6 +68,7 @@ func (s *serviceImpl) Install(
 		if err = s.markRuntimeCacheChanged(ctx, "source_plugin_installed"); err != nil {
 			return result, err
 		}
+		s.invalidateSourceConsumerFrontendMounts()
 		if err = notifyPluginInstalled(ctx, pluginID); err != nil {
 			return result, err
 		}
@@ -227,6 +228,7 @@ func (s *serviceImpl) Uninstall(
 		if err = s.markRuntimeCacheChanged(ctx, "source_plugin_uninstalled"); err != nil {
 			return err
 		}
+		s.invalidateSourceConsumerFrontendMounts()
 		if err = notifyPluginUninstalled(ctx, pluginID); err != nil {
 			return err
 		}
@@ -504,6 +506,7 @@ func (s *serviceImpl) updateStatus(
 	if err = s.markRuntimeCacheChanged(ctx, "source_plugin_status_changed"); err != nil {
 		return err
 	}
+	s.invalidateSourceConsumerFrontendMounts()
 	if status == catalog.StatusEnabled {
 		return notifyPluginEnabled(ctx, pluginID)
 	}

@@ -207,6 +207,53 @@ func DiscoverVuePathsFromFS(fileSystem fs.FS, searchDir string) []string {
 	return items
 }
 
+// DiscoverConsumerFrontendPaths discovers optional consumer frontend resources
+// by directory convention. The host treats these files as business-entry
+// assets, not administrator workspace pages.
+func DiscoverConsumerFrontendPaths(rootDir string) []string {
+	searchDir := filepath.Join(rootDir, "frontend", "consumer")
+	if !gfile.Exists(searchDir) || !gfile.IsDir(searchDir) {
+		return []string{}
+	}
+
+	resourceFiles, err := gfile.ScanDirFile(searchDir, "*", true)
+	if err != nil {
+		return []string{}
+	}
+
+	items := make([]string, 0, len(resourceFiles))
+	for _, resourceFile := range resourceFiles {
+		if gfile.IsDir(resourceFile) {
+			continue
+		}
+		relativePath, relErr := filepath.Rel(rootDir, resourceFile)
+		if relErr != nil {
+			continue
+		}
+		items = append(items, path.Clean(strings.ReplaceAll(relativePath, "\\", "/")))
+	}
+	sort.Strings(items)
+	return items
+}
+
+// DiscoverConsumerFrontendPathsFromFS discovers optional consumer frontend
+// resources from one embedded filesystem.
+func DiscoverConsumerFrontendPathsFromFS(fileSystem fs.FS) []string {
+	const searchDir = "frontend/consumer"
+	items := make([]string, 0)
+	if err := fs.WalkDir(fileSystem, searchDir, func(currentPath string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil || d == nil || d.IsDir() {
+			return walkErr
+		}
+		items = append(items, path.Clean(currentPath))
+		return nil
+	}); err != nil {
+		return []string{}
+	}
+	sort.Strings(items)
+	return items
+}
+
 // ValidateSQLPaths validates install or uninstall SQL asset paths under one plugin root.
 func ValidateSQLPaths(rootDir string, relativePaths []string, uninstall bool) error {
 	return validateSQLPaths(

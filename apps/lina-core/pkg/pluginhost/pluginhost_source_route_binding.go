@@ -24,6 +24,8 @@ type SourceRouteBinding struct {
 	Method string
 	// Path is the resolved public route path registered on the host server.
 	Path string
+	// Surface is the host service surface inferred from the public route path.
+	Surface ServiceSurface
 	// Handler is the bound route handler or bound object method.
 	Handler interface{}
 	// Documentable reports whether the handler uses GoFrame standard DTO routing
@@ -96,12 +98,14 @@ func captureFunctionRouteBindings(
 	}
 
 	finalPath := joinRoutePatterns(prefix, routePath)
+	surface := RouteSurfaceFromPath(finalPath)
 	bindings := make([]SourceRouteBinding, 0, len(methods))
 	for _, method := range methods {
 		bindings = append(bindings, SourceRouteBinding{
 			PluginID:     strings.TrimSpace(pluginID),
 			Method:       normalizeRouteMethod(method),
 			Path:         finalPath,
+			Surface:      surface,
 			Handler:      handler,
 			Documentable: documentable,
 		})

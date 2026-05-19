@@ -59,6 +59,14 @@ type testSourceDisabledReq struct {
 // testSourceDisabledRes is the response DTO for the disabled source-plugin handler.
 type testSourceDisabledRes struct{}
 
+// testSourceConsumerReq defines one source-plugin consumer DTO route used in tests.
+type testSourceConsumerReq struct {
+	g.Meta `path:"/products" method:"get" tags:"Mall Catalog" summary:"Query consumer products" dc:"Return consumer-visible product information."`
+}
+
+// testSourceConsumerRes is the response DTO for the consumer source-plugin handler.
+type testSourceConsumerRes struct{}
+
 // GetOpenApi returns fixed host document metadata for builder tests.
 func (p *testConfigProvider) GetOpenApi(ctx context.Context) *configsvc.OpenApiConfig {
 	return &configsvc.OpenApiConfig{
@@ -108,6 +116,11 @@ func testSourceDisabledHandler(ctx context.Context, req *testSourceDisabledReq) 
 	return &testSourceDisabledRes{}, nil
 }
 
+// testSourceConsumerHandler is the strict-route source-plugin handler for consumer API grouping.
+func testSourceConsumerHandler(ctx context.Context, req *testSourceConsumerReq) (*testSourceConsumerRes, error) {
+	return &testSourceConsumerRes{}, nil
+}
+
 // TestBuildProjectsHostAndEnabledPluginRoutes verifies the host-managed OpenAPI
 // document keeps host routes, filters disabled source routes, and includes
 // dynamic-plugin projections.
@@ -128,12 +141,14 @@ func TestBuildProjectsHostAndEnabledPluginRoutes(t *testing.T) {
 		enabledByID: map[string]bool{
 			"plugin-source-enabled":  true,
 			"plugin-source-disabled": false,
+			"mall":                   true,
 		},
 		sourceRoutes: []pluginhost.SourceRouteBinding{
 			{
 				PluginID:     "plugin-source-enabled",
 				Method:       "GET",
 				Path:         "/api/v1/plugins/enabled/ping",
+				Surface:      pluginhost.SurfaceAdmin,
 				Handler:      testSourceEnabledHandler,
 				Documentable: true,
 			},
@@ -141,7 +156,16 @@ func TestBuildProjectsHostAndEnabledPluginRoutes(t *testing.T) {
 				PluginID:     "plugin-source-disabled",
 				Method:       "GET",
 				Path:         "/api/v1/plugins/disabled/ping",
+				Surface:      pluginhost.SurfaceAdmin,
 				Handler:      testSourceDisabledHandler,
+				Documentable: true,
+			},
+			{
+				PluginID:     "mall",
+				Method:       "GET",
+				Path:         "/api/c/v1/mall/products",
+				Surface:      pluginhost.SurfaceConsumer,
+				Handler:      testSourceConsumerHandler,
 				Documentable: true,
 			},
 		},
@@ -161,6 +185,9 @@ func TestBuildProjectsHostAndEnabledPluginRoutes(t *testing.T) {
 	if document.Security == nil {
 		t.Fatalf("expected hosted document to publish bearer security")
 	}
+	if len(*document.Security) == 0 {
+		t.Fatalf("expected hosted document to keep global bearer security")
+	}
 	if _, ok := document.Paths["/api/v1/host/items"]; !ok {
 		t.Fatalf("expected host static route to stay in hosted document")
 	}
@@ -172,6 +199,19 @@ func TestBuildProjectsHostAndEnabledPluginRoutes(t *testing.T) {
 	}
 	if _, ok := document.Paths["/api/v1/extensions/plugin-demo-dynamic/backend-summary"]; !ok {
 		t.Fatalf("expected dynamic-plugin route projection to stay available")
+	}
+	consumerOperation := document.Paths["/api/c/v1/mall/products"].Get
+	if consumerOperation == nil {
+		t.Fatalf("expected consumer source-plugin route to be projected")
+	}
+	if len(consumerOperation.Tags) == 0 || consumerOperation.Tags[0] != "Consumer API / mall" {
+		t.Fatalf("expected consumer operation to be tagged by service surface, got %#v", consumerOperation.Tags)
+	}
+	if consumerOperation.Security == nil {
+		t.Fatalf("expected consumer operation to override global host security")
+	}
+	if len(*consumerOperation.Security) != 0 {
+		t.Fatalf("expected consumer operation to publish no host-admin security, got %#v", *consumerOperation.Security)
 	}
 }
 
@@ -199,6 +239,7 @@ func TestBuildLocalizesOpenAPIForRequestLocale(t *testing.T) {
 				PluginID:     "plugin-source-enabled",
 				Method:       "GET",
 				Path:         "/api/v1/plugins/enabled/ping",
+				Surface:      pluginhost.SurfaceAdmin,
 				Handler:      testSourceEnabledHandler,
 				Documentable: true,
 			},

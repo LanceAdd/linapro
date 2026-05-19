@@ -42,6 +42,10 @@ type HTTPMiddleware interface {
 	RequirePermission(permissions ...string) ghttp.HandlerFunc
 	// Permission enforces declarative permission requirements declared on static host API handlers.
 	Permission(r *ghttp.Request)
+	// ConsumerCtx injects consumer plugin request context into request.
+	ConsumerCtx(r *ghttp.Request)
+	// ConsumerTenant resolves consumer tenant identity for plugin-owned consumer handlers.
+	ConsumerTenant(r *ghttp.Request)
 }
 
 // RuntimeSupport defines non-middleware helpers shared with host runtime
@@ -80,7 +84,7 @@ type middlewareI18nService interface {
 
 // New creates a middleware service from explicit runtime-owned dependencies.
 func New(authSvc auth.Service, bizCtxSvc bizctx.Service, configSvc config.Service, i18nSvc middlewareI18nService, pluginSvc pluginsvc.Service, roleSvc role.Service, tenantSvc tenantcapsvc.Service) Service {
-	return &serviceImpl{
+	s := &serviceImpl{
 		authSvc:   authSvc,
 		bizCtxSvc: bizCtxSvc,
 		configSvc: configSvc,
@@ -89,4 +93,5 @@ func New(authSvc auth.Service, bizCtxSvc bizctx.Service, configSvc config.Servic
 		roleSvc:   roleSvc,
 		tenantSvc: tenantSvc,
 	}
+	return s
 }

@@ -36,6 +36,18 @@
         }
       }
     },
+    "consumer": {
+      "auth": {
+        "invalid": "Consumer authentication token is invalid",
+        "required": "Consumer authentication is required"
+      },
+      "plugin": {
+        "required": "Consumer plugin route is invalid"
+      },
+      "tenant": {
+        "required": "Consumer tenant context is required"
+      }
+    },
     "sysconfig": {
       "builtin": {
         "delete": {

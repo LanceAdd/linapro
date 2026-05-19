@@ -36,6 +36,8 @@ func (s *serviceImpl) PublishedRouteMiddlewares() pluginhost.RouteMiddlewares {
 		s.Auth,
 		s.Tenancy,
 		s.Permission,
+		s.ConsumerCtx,
+		s.ConsumerTenant,
 	)
 }
 

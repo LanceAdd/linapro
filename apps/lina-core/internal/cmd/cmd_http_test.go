@@ -429,6 +429,101 @@ func TestParsePluginAssetRequestPath(t *testing.T) {
 	}
 }
 
+// TestParseSourceConsumerPluginAssetRequestPath verifies hosted source-plugin
+// consumer asset URLs are parsed into plugin ID, version, and relative asset path.
+func TestParseSourceConsumerPluginAssetRequestPath(t *testing.T) {
+	tests := []struct {
+		name          string
+		path          string
+		wantPluginID  string
+		wantVersion   string
+		wantAssetPath string
+		wantOK        bool
+	}{
+		{
+			name:          "hosted consumer asset file",
+			path:          "consumer-plugin-assets/plugin-cms/v0.1.0/assets/main.js",
+			wantPluginID:  "plugin-cms",
+			wantVersion:   "v0.1.0",
+			wantAssetPath: "assets/main.js",
+			wantOK:        true,
+		},
+		{
+			name:          "version root path",
+			path:          "/consumer-plugin-assets/plugin-cms/v0.1.0/",
+			wantPluginID:  "plugin-cms",
+			wantVersion:   "v0.1.0",
+			wantAssetPath: "",
+			wantOK:        true,
+		},
+		{
+			name:   "non consumer asset path",
+			path:   "/plugin-assets/plugin-cms/v0.1.0/index.html",
+			wantOK: false,
+		},
+		{
+			name:   "missing version",
+			path:   "/consumer-plugin-assets/plugin-cms",
+			wantOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotPluginID, gotVersion, gotAssetPath, gotOK := parseSourceConsumerPluginAssetRequestPath(tt.path)
+			if gotOK != tt.wantOK {
+				t.Fatalf("expected ok=%v, got %v", tt.wantOK, gotOK)
+			}
+			if gotPluginID != tt.wantPluginID {
+				t.Fatalf("expected pluginID=%q, got %q", tt.wantPluginID, gotPluginID)
+			}
+			if gotVersion != tt.wantVersion {
+				t.Fatalf("expected version=%q, got %q", tt.wantVersion, gotVersion)
+			}
+			if gotAssetPath != tt.wantAssetPath {
+				t.Fatalf("expected assetPath=%q, got %q", tt.wantAssetPath, gotAssetPath)
+			}
+		})
+	}
+}
+
+// TestApplyPluginFrontendAssetHeadersEmitsValidators verifies plugin frontend
+// assets carry cache validators for browser revalidation.
+func TestApplyPluginFrontendAssetHeadersEmitsValidators(t *testing.T) {
+	out := &pluginsvc.RuntimeFrontendAssetOutput{
+		Content:      []byte("asset"),
+		ContentType:  "application/javascript",
+		ETag:         `"asset-etag"`,
+		CacheControl: "no-cache",
+	}
+	header := make(http.Header)
+
+	applyPluginFrontendAssetHeaders(header, out)
+
+	if got := header.Get("Content-Type"); got != "application/javascript" {
+		t.Fatalf("expected content type header, got %q", got)
+	}
+	if got := header.Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("expected cache control %q, got %q", "no-cache", got)
+	}
+	if got := header.Get("ETag"); got != `"asset-etag"` {
+		t.Fatalf("expected ETag header, got %q", got)
+	}
+}
+
+// TestRequestETagMatches verifies If-None-Match parsing for multiple values.
+func TestRequestETagMatches(t *testing.T) {
+	if !requestETagMatches(`"stale", "fresh"`, `"fresh"`) {
+		t.Fatalf("expected comma-separated ETag list to match")
+	}
+	if !requestETagMatches("*", `"fresh"`) {
+		t.Fatalf("expected wildcard ETag to match")
+	}
+	if requestETagMatches(`"stale"`, `"fresh"`) {
+		t.Fatalf("expected unrelated ETag not to match")
+	}
+}
+
 // mustFindRoute returns one route item by method and path.
 func mustFindRoute(t *testing.T, server *ghttp.Server, method string, route string) ghttp.RouterItem {
 	t.Helper()

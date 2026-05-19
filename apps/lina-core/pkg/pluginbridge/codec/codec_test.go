@@ -39,6 +39,40 @@ func TestValidateRouteContractsRejectsInvalidPublicPermission(t *testing.T) {
 	}
 }
 
+// TestValidateRouteContractsRejectsConsumerSurfaceForDynamicRoutes verifies the
+// first dynamic runtime phase reserves consumer route execution for later.
+func TestValidateRouteContractsRejectsConsumerSurfaceForDynamicRoutes(t *testing.T) {
+	routes := []*RouteContract{
+		{
+			Path:    "/products",
+			Method:  http.MethodGet,
+			Access:  AccessPublic,
+			Surface: SurfaceConsumer,
+		},
+	}
+	if err := ValidateRouteContracts("plugin-demo-dynamic", routes); err == nil {
+		t.Fatal("expected consumer dynamic route surface to be rejected")
+	}
+}
+
+// TestValidateRouteContractsDefaultsSurfaceToAdmin verifies dynamic route
+// contracts retain the current admin execution surface by default.
+func TestValidateRouteContractsDefaultsSurfaceToAdmin(t *testing.T) {
+	routes := []*RouteContract{
+		{
+			Path:   "/review-summary",
+			Method: http.MethodGet,
+			Access: AccessLogin,
+		},
+	}
+	if err := ValidateRouteContracts("plugin-demo-dynamic", routes); err != nil {
+		t.Fatalf("expected admin route contract to be valid, got %v", err)
+	}
+	if routes[0].Surface != SurfaceAdmin {
+		t.Fatalf("expected admin route surface, got %s", routes[0].Surface)
+	}
+}
+
 // TestEncodeDecodeRequestEnvelopeRoundTrip verifies the manual protobuf codec
 // preserves nested route, request, and identity snapshots.
 func TestEncodeDecodeRequestEnvelopeRoundTrip(t *testing.T) {

@@ -562,6 +562,11 @@ func TestDiscoverPluginVuePathsUseDirectoryConvention(t *testing.T) {
 		t.Fatalf("failed to create slot dir: %v", err)
 	}
 	testutil.WriteTestFile(t, filepath.Join(slotDir, "workspace-card.vue"), "<template><div /></template>\n")
+	consumerDir := filepath.Join(pluginDir, "frontend", "consumer")
+	if err := os.MkdirAll(consumerDir, 0o755); err != nil {
+		t.Fatalf("failed to create consumer frontend dir: %v", err)
+	}
+	testutil.WriteTestFile(t, filepath.Join(consumerDir, "index.html"), "<main>consumer</main>\n")
 
 	pagePaths := svcs.Catalog.DiscoverPagePaths(pluginDir)
 	if len(pagePaths) != 1 || pagePaths[0] != "frontend/pages/main-entry.vue" {
@@ -571,6 +576,10 @@ func TestDiscoverPluginVuePathsUseDirectoryConvention(t *testing.T) {
 	slotPaths := svcs.Catalog.DiscoverSlotPaths(pluginDir)
 	if len(slotPaths) != 1 || slotPaths[0] != "frontend/slots/dashboard.workspace.after/workspace-card.vue" {
 		t.Fatalf("unexpected slot paths: %#v", slotPaths)
+	}
+	consumerPaths := svcs.Catalog.DiscoverConsumerFrontendPaths(pluginDir)
+	if len(consumerPaths) != 1 || consumerPaths[0] != "frontend/consumer/index.html" {
+		t.Fatalf("unexpected consumer frontend paths: %#v", consumerPaths)
 	}
 }
 
@@ -585,6 +594,11 @@ func TestBuildPluginManifestSnapshotIncludesDirectoryDiscoveredAssets(t *testing
 		t.Fatalf("failed to create slot dir: %v", err)
 	}
 	testutil.WriteTestFile(t, filepath.Join(slotDir, "workspace-card.vue"), "<template><div /></template>\n")
+	consumerDir := filepath.Join(pluginDir, "frontend", "consumer")
+	if err := os.MkdirAll(consumerDir, 0o755); err != nil {
+		t.Fatalf("failed to create consumer frontend dir: %v", err)
+	}
+	testutil.WriteTestFile(t, filepath.Join(consumerDir, "index.html"), "<main>consumer</main>\n")
 
 	snapshot, err := svcs.Catalog.BuildManifestSnapshot(&catalog.Manifest{
 		ID:          "plugin-snapshot",
@@ -609,6 +623,7 @@ func TestBuildPluginManifestSnapshotIncludesDirectoryDiscoveredAssets(t *testing
 	for _, expected := range []string{
 		"frontendPageCount: 1",
 		"frontendSlotCount: 1",
+		"consumerFrontendAssetCount: 1",
 		"installSqlCount: 1",
 		"menuCount: 1",
 	} {
@@ -843,6 +858,7 @@ func TestScanEmbeddedSourcePluginManifestsUsesPluginEmbeddedFiles(t *testing.T) 
 		"plugin.yaml":                                &fstest.MapFile{Data: []byte("id: plugin-embedded-manifest\nname: Embedded Manifest Plugin\nversion: 0.1.0\ntype: source\nscope_nature: tenant_aware\nsupports_multi_tenant: false\ndefault_install_mode: global\n")},
 		"frontend/pages/main-entry.vue":              &fstest.MapFile{Data: []byte("<template><div /></template>\n")},
 		"frontend/slots/layout.header.after/tip.vue": &fstest.MapFile{Data: []byte("<template><div /></template>\n")},
+		"frontend/consumer/index.html":               &fstest.MapFile{Data: []byte("<main>consumer</main>\n")},
 		"manifest/sql/001-plugin-embedded-manifest.sql": &fstest.MapFile{
 			Data: []byte("SELECT 1;\n"),
 		},
@@ -877,6 +893,9 @@ func TestScanEmbeddedSourcePluginManifestsUsesPluginEmbeddedFiles(t *testing.T) 
 	}
 	if len(svcs.Catalog.ListFrontendSlotPaths(target)) != 1 {
 		t.Fatalf("expected embedded frontend slot paths to be discovered")
+	}
+	if len(svcs.Catalog.ListConsumerFrontendPaths(target)) != 1 {
+		t.Fatalf("expected embedded consumer frontend paths to be discovered")
 	}
 }
 
@@ -1363,6 +1382,122 @@ func TestValidateManifestForcesGlobalWhenTenantGovernanceUnsupported(t *testing.
 	}
 	if manifest.SupportsTenantGovernance() {
 		t.Fatalf("expected explicit supports_multi_tenant=false to disable tenant governance")
+	}
+}
+
+// TestNormalizeConsumerSpecValidatesFrontendMountContract verifies the
+// consumer-facing frontend manifest contract before plugin lifecycle install.
+func TestNormalizeConsumerSpecValidatesFrontendMountContract(t *testing.T) {
+	tests := []struct {
+		name       string
+		frontend   *catalog.ConsumerFrontendSpec
+		wantMount  string
+		wantIndex  string
+		wantErr    string
+		wantEnable *bool
+	}{
+		{
+			name:      "missing mount keeps defaults without activating mount",
+			frontend:  &catalog.ConsumerFrontendSpec{},
+			wantIndex: "index.html",
+		},
+		{
+			name: "trims and normalizes mount",
+			frontend: &catalog.ConsumerFrontendSpec{
+				MountPath: " portal ",
+				Index:     " app.html ",
+			},
+			wantMount: "/portal",
+			wantIndex: "app.html",
+		},
+		{
+			name: "disabled declaration still normalizes contract",
+			frontend: &catalog.ConsumerFrontendSpec{
+				Enabled:   boolPtr(false),
+				MountPath: "/portal/",
+			},
+			wantMount:  "/portal",
+			wantIndex:  "index.html",
+			wantEnable: boolPtr(false),
+		},
+		{
+			name: "root mount rejected",
+			frontend: &catalog.ConsumerFrontendSpec{
+				MountPath: "/",
+			},
+			wantErr: "cannot be root",
+		},
+		{
+			name: "repeated root slash rejected",
+			frontend: &catalog.ConsumerFrontendSpec{
+				MountPath: "//",
+			},
+			wantErr: "cannot be root",
+		},
+		{
+			name: "reserved mount rejected",
+			frontend: &catalog.ConsumerFrontendSpec{
+				MountPath: "/api/mall",
+			},
+			wantErr: "reserved prefix",
+		},
+		{
+			name: "repeated separator rejected",
+			frontend: &catalog.ConsumerFrontendSpec{
+				MountPath: "/portal//admin",
+			},
+			wantErr: "mount_path is invalid",
+		},
+		{
+			name: "backslash separator rejected",
+			frontend: &catalog.ConsumerFrontendSpec{
+				MountPath: "\\portal",
+			},
+			wantErr: "mount_path is invalid",
+		},
+		{
+			name: "path traversal rejected",
+			frontend: &catalog.ConsumerFrontendSpec{
+				MountPath: "/portal/../admin",
+			},
+			wantErr: "mount_path is invalid",
+		},
+		{
+			name: "unsafe index rejected",
+			frontend: &catalog.ConsumerFrontendSpec{
+				MountPath: "/portal",
+				Index:     "../index.html",
+			},
+			wantErr: "index is invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manifest := &catalog.Manifest{
+				Consumer: &catalog.ConsumerSpec{Frontend: tt.frontend},
+			}
+
+			err := catalog.NormalizeConsumerSpec(manifest)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected consumer spec to normalize, got %v", err)
+			}
+			if tt.frontend.MountPath != tt.wantMount {
+				t.Fatalf("expected mount %q, got %q", tt.wantMount, tt.frontend.MountPath)
+			}
+			if tt.frontend.Index != tt.wantIndex {
+				t.Fatalf("expected index %q, got %q", tt.wantIndex, tt.frontend.Index)
+			}
+			if tt.wantEnable != nil && (tt.frontend.Enabled == nil || *tt.frontend.Enabled != *tt.wantEnable) {
+				t.Fatalf("expected enabled flag %v, got %#v", *tt.wantEnable, tt.frontend.Enabled)
+			}
+		})
 	}
 }
 

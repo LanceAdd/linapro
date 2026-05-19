@@ -1,4 +1,4 @@
-// This file exposes hosted frontend asset methods on the root plugin facade.
+// This file exposes runtime hosted frontend asset methods on the root plugin facade.
 
 package plugin
 

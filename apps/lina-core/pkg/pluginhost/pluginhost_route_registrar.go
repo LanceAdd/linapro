@@ -40,6 +40,10 @@ type RouteMiddlewares interface {
 	Tenancy() RouteMiddleware
 	// Permission returns the host declarative permission middleware.
 	Permission() RouteMiddleware
+	// ConsumerCtx returns the host consumer-context injection middleware.
+	ConsumerCtx() RouteMiddleware
+	// ConsumerTenant returns the host consumer tenant-resolution middleware.
+	ConsumerTenant() RouteMiddleware
 }
 
 // RouteRegistrar exposes plugin route group registration helpers for one plugin.
@@ -114,6 +118,8 @@ type routeMiddlewares struct {
 	auth            RouteMiddleware
 	tenancy         RouteMiddleware
 	permission      RouteMiddleware
+	consumerCtx     RouteMiddleware
+	consumerTenant  RouteMiddleware
 }
 
 // NewRouteMiddlewares creates and returns a new published host middleware directory for plugins.
@@ -126,6 +132,8 @@ func NewRouteMiddlewares(
 	auth RouteMiddleware,
 	tenancy RouteMiddleware,
 	permission RouteMiddleware,
+	consumerCtx RouteMiddleware,
+	consumerTenant RouteMiddleware,
 ) RouteMiddlewares {
 	return &routeMiddlewares{
 		neverDoneCtx:    neverDoneCtx,
@@ -136,6 +144,8 @@ func NewRouteMiddlewares(
 		auth:            auth,
 		tenancy:         tenancy,
 		permission:      permission,
+		consumerCtx:     consumerCtx,
+		consumerTenant:  consumerTenant,
 	}
 }
 
@@ -281,6 +291,22 @@ func (m *routeMiddlewares) Permission() RouteMiddleware {
 		return nil
 	}
 	return m.permission
+}
+
+// ConsumerCtx returns the published consumer context injection middleware.
+func (m *routeMiddlewares) ConsumerCtx() RouteMiddleware {
+	if m == nil {
+		return nil
+	}
+	return m.consumerCtx
+}
+
+// ConsumerTenant returns the published consumer tenant-resolution middleware.
+func (m *routeMiddlewares) ConsumerTenant() RouteMiddleware {
+	if m == nil {
+		return nil
+	}
+	return m.consumerTenant
 }
 
 // normalizeRoutePrefix canonicalizes plugin-owned route group prefixes so

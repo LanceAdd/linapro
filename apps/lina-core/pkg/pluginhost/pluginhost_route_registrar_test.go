@@ -6,6 +6,7 @@ package pluginhost
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -29,7 +30,7 @@ func testPluginPingHandler(ctx context.Context, req *testPluginPingReq) (*testPl
 // registrar exposes the root group and the published middleware directory.
 func TestNewRouteRegistrarExposeRootGroupAndPublishedMiddlewares(t *testing.T) {
 	noop := func(r *ghttp.Request) {}
-	middlewares := NewRouteMiddlewares(noop, noop, noop, noop, noop, noop, noop, noop)
+	middlewares := NewRouteMiddlewares(noop, noop, noop, noop, noop, noop, noop, noop, noop, noop)
 	server := g.Server("pluginhost-route-registrar-test")
 
 	var rootGroup *ghttp.RouterGroup
@@ -60,6 +61,8 @@ func TestNewRouteRegistrarExposeRootGroupAndPublishedMiddlewares(t *testing.T) {
 			middlewares.Ctx(),
 			middlewares.Auth(),
 			middlewares.Permission(),
+			middlewares.ConsumerCtx(),
+			middlewares.ConsumerTenant(),
 		)
 	})
 	if !called {
@@ -98,6 +101,9 @@ func TestRouteRegistrarCaptureSourceRouteBindings(t *testing.T) {
 	if bindings[0].Path != "/api/v1/plugins/plugins/test-plugin/ping" {
 		t.Fatalf("expected strict route path to include nested prefix, got %s", bindings[0].Path)
 	}
+	if bindings[0].Surface != SurfaceAdmin {
+		t.Fatalf("expected admin surface for admin route, got %s", bindings[0].Surface)
+	}
 	if !bindings[0].Documentable {
 		t.Fatalf("expected strict DTO handler to be documentable")
 	}
@@ -106,6 +112,47 @@ func TestRouteRegistrarCaptureSourceRouteBindings(t *testing.T) {
 	}
 	if bindings[1].Documentable {
 		t.Fatalf("expected raw handler to be non-documentable")
+	}
+}
+
+// TestRouteRegistrarCaptureConsumerRouteSurface verifies consumer plugin route
+// bindings are marked with the plugin consumer surface and owning plugin ID.
+func TestRouteRegistrarCaptureConsumerRouteSurface(t *testing.T) {
+	server := g.Server("pluginhost-route-consumer-binding-test")
+
+	var rootGroup *ghttp.RouterGroup
+	server.Group("/", func(group *ghttp.RouterGroup) {
+		rootGroup = group
+	})
+
+	registrar := NewRouteRegistrar(rootGroup, "plugin-demo", nil, nil)
+	registrar.Group(ConsumerAPIPrefix+"/plugin-demo", func(group RouteGroup) {
+		group.GET("/products", func(r *ghttp.Request) {})
+	})
+
+	bindings := registrar.RouteBindings()
+	if len(bindings) != 1 {
+		t.Fatalf("expected one consumer route binding, got %d", len(bindings))
+	}
+	if bindings[0].PluginID != "plugin-demo" {
+		t.Fatalf("expected plugin id plugin-demo, got %s", bindings[0].PluginID)
+	}
+	if bindings[0].Surface != SurfaceConsumer {
+		t.Fatalf("expected consumer surface, got %s", bindings[0].Surface)
+	}
+	if bindings[0].Path != "/api/c/v1/plugin-demo/products" {
+		t.Fatalf("expected consumer route path, got %s", bindings[0].Path)
+	}
+}
+
+// TestResolveConsumerTenantIDRejectsNegativeValues verifies malformed tenant
+// declarations fail explicitly instead of being treated as absent.
+func TestResolveConsumerTenantIDRejectsNegativeValues(t *testing.T) {
+	request := &ghttp.Request{Request: &http.Request{Header: make(http.Header)}}
+	request.Header.Set(ConsumerHeaderTenantID, "-1")
+
+	if _, matched, err := ResolveConsumerTenantID(request); err == nil || matched {
+		t.Fatalf("expected negative tenant id to return an explicit error, matched=%v err=%v", matched, err)
 	}
 }
 

@@ -12,6 +12,10 @@ const (
 	AccessPublic = "public"
 	// AccessLogin requires authenticated access.
 	AccessLogin = "login"
+	// SurfaceAdmin marks dynamic routes that execute through the admin API surface.
+	SurfaceAdmin = "admin"
+	// SurfaceConsumer is reserved for future dynamic consumer route execution.
+	SurfaceConsumer = "consumer"
 
 	// RuntimeKindWasm identifies a wasm runtime artifact.
 	RuntimeKindWasm = "wasm"
@@ -55,6 +59,9 @@ type RouteContract struct {
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 	// Access declares whether the route is public or requires login context.
 	Access string `json:"access,omitempty" yaml:"access,omitempty"`
+	// Surface declares the host service surface. Dynamic plugins currently
+	// execute only admin routes; consumer is reserved for a later runtime phase.
+	Surface string `json:"surface,omitempty" yaml:"surface,omitempty"`
 	// Permission stores the host permission key enforced for authenticated access.
 	Permission string `json:"permission,omitempty" yaml:"permission,omitempty"`
 	// Meta stores plugin-defined route metadata that the host transports without interpretation.

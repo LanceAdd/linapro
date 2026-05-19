@@ -102,6 +102,8 @@ const (
 	CodecProtobuf                 = contract.CodecProtobuf
 	AccessPublic                  = contract.AccessPublic
 	AccessLogin                   = contract.AccessLogin
+	SurfaceAdmin                  = contract.SurfaceAdmin
+	SurfaceConsumer               = contract.SurfaceConsumer
 	RuntimeKindWasm               = contract.RuntimeKindWasm
 	ABIVersionV1                  = contract.ABIVersionV1
 	SupportedABIVersion           = contract.SupportedABIVersion

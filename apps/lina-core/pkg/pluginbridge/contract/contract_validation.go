@@ -49,6 +49,10 @@ func ValidateRouteContracts(pluginID string, routes []*RouteContract) error {
 				return gerror.Newf("dynamic route permission resource and action cannot be empty: %s", route.Permission)
 			}
 		}
+		if route.Surface != "" && route.Surface != SurfaceAdmin {
+			return gerror.Newf("dynamic route surface currently only supports admin: %s %s", route.Method, route.Path)
+		}
+		route.Surface = SurfaceAdmin
 		key := route.Method + " " + route.Path
 		if _, ok := seen[key]; ok {
 			return gerror.Newf("dynamic route method and path cannot be duplicated: %s", key)
@@ -113,6 +117,7 @@ func normalizeRouteContract(route *RouteContract) {
 	route.Summary = strings.TrimSpace(route.Summary)
 	route.Description = strings.TrimSpace(route.Description)
 	route.Access = strings.ToLower(strings.TrimSpace(route.Access))
+	route.Surface = strings.ToLower(strings.TrimSpace(route.Surface))
 	route.Permission = strings.TrimSpace(route.Permission)
 	route.Meta = normalizeRouteMeta(route.Meta)
 	route.RequestType = strings.TrimSpace(route.RequestType)
