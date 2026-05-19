@@ -1,5 +1,19 @@
 ## ADDED Requirements
 
+### Requirement: 宿主静态前端资源必须优先于消费端挂载
+
+系统 SHALL 在匹配源码插件消费端前端挂载路径前优先返回已存在的宿主内置前端静态资源，避免插件挂载遮蔽宿主自有静态文件。
+
+#### Scenario: 宿主静态资源优先于匹配的消费端挂载
+- **WHEN** 宿主存在内置静态资源`/assets/app.js`
+- **AND** 源码插件消费端挂载也可能匹配`/assets/app.js`
+- **THEN** 宿主返回内置静态资源
+
+#### Scenario: 消费端挂载处理非宿主静态资源路径
+- **WHEN** 源码插件声明`consumer.frontend.mount_path`为`/portal`
+- **AND** `/portal/assets/app.js`不是宿主内置静态资源
+- **THEN** 宿主通过消费端前端挂载解析该请求
+
 ### Requirement: 源码插件可以托管消费端前端资产
 
 系统 SHALL 允许源码插件通过`frontend/consumer/`目录提供消费端浏览器前端资产，并由宿主按插件启用状态、版本和声明的前端挂载路径进行托管。

@@ -6,10 +6,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"unsafe"
 
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -521,6 +523,49 @@ func TestRequestETagMatches(t *testing.T) {
 	}
 	if requestETagMatches(`"stale"`, `"fresh"`) {
 		t.Fatalf("expected unrelated ETag not to match")
+	}
+}
+
+// TestFrontendHandlerServesHostStaticAssetBeforeConsumerMount verifies concrete
+// host assets are not routed through consumer mount resolution.
+func TestFrontendHandlerServesHostStaticAssetBeforeConsumerMount(t *testing.T) {
+	subFS := fstest.MapFS{
+		"assets/app.js": &fstest.MapFile{Data: []byte("host asset")},
+		"index.html":    &fstest.MapFile{Data: []byte("host index")},
+	}
+	fileServer := http.FileServer(http.FS(subFS))
+	server := ghttp.GetServer("cmd-http-static-before-consumer-" + guid.S())
+	server.SetPort(0)
+	server.SetDumpRouterMap(false)
+	server.BindHandler("/*", newFrontendAssetHandler(subFS, fileServer, nil))
+
+	if err := server.Start(); err != nil {
+		t.Fatalf("start frontend handler test server: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := server.Shutdown(); err != nil {
+			t.Fatalf("shutdown frontend handler test server: %v", err)
+		}
+	})
+
+	response, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/assets/app.js", server.GetListenedPort()))
+	if err != nil {
+		t.Fatalf("request host static asset: %v", err)
+	}
+	defer func() {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			t.Fatalf("close host static asset response: %v", closeErr)
+		}
+	}()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read host static asset response: %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected host static asset status 200, got %d body=%s", response.StatusCode, string(body))
+	}
+	if string(body) != "host asset" {
+		t.Fatalf("expected host static asset content, got %q", string(body))
 	}
 }
 

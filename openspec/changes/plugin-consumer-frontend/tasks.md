@@ -34,6 +34,10 @@
 - [x] 5.6 运行`git diff --check`，结果通过。
 - [x] 5.7 运行`openspec validate plugin-consumer-frontend --strict`，结果通过。
 
+## Feedback
+
+- [x] **FB-1**: 消费端前端挂载路径可能遮蔽宿主静态前端资源；拒绝宿主自有资源命名空间和类似静态资源的挂载路径，并在消费端挂载前优先返回宿主真实静态资源。已运行`go test ./internal/service/plugin/internal/catalog -run "TestNormalizeConsumerSpecRejectsHostStaticMounts|TestNormalizeConsumerSpecAcceptsBusinessRouteMount" -count=1`、`go test ./internal/cmd -run "TestFrontendHandlerServesHostStaticAssetBeforeConsumerMount|TestParseSourceConsumerPluginAssetRequestPath|TestApplyPluginFrontendAssetHeadersEmitsValidators|TestRequestETagMatches" -count=1`和`openspec validate plugin-consumer-frontend --strict`，结果通过。
+
 ## Review Notes
 
 - i18n 影响：不新增或修改用户可见运行时文案、前端语言包、插件`manifest/i18n`资源或`apidoc i18n JSON`。

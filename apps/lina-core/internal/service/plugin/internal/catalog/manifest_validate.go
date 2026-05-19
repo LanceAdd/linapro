@@ -183,6 +183,9 @@ func NormalizeConsumerSpec(manifest *Manifest) error {
 	if strings.Contains(frontend.MountPath, "..") {
 		return gerror.Newf("consumer frontend mount_path is invalid: %s", frontend.MountPath)
 	}
+	if hasStaticAssetLikeConsumerMountSegment(frontend.MountPath) {
+		return gerror.Newf("consumer frontend mount_path must be a business route prefix: %s", frontend.MountPath)
+	}
 	if isReservedConsumerMountPath(frontend.MountPath) {
 		return gerror.Newf("consumer frontend mount_path uses a reserved prefix: %s", frontend.MountPath)
 	}
@@ -212,14 +215,33 @@ func normalizeConsumerMountPath(value string) string {
 func isReservedConsumerMountPath(mountPath string) bool {
 	reservedPrefixes := []string{
 		"/api",
-		"/plugin-assets",
-		"/consumer-plugin-assets",
-		"/swagger",
 		"/api.json",
+		"/assets",
+		"/consumer-plugin-assets",
+		"/favicon.ico",
+		"/index.html",
+		"/manifest.json",
 		"/openapi",
+		"/plugin-assets",
+		"/robots.txt",
+		"/static",
+		"/swagger",
 	}
 	for _, prefix := range reservedPrefixes {
 		if mountPath == prefix || strings.HasPrefix(mountPath, prefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// hasStaticAssetLikeConsumerMountSegment reports whether the mount contains a
+// dotted segment such as favicon.ico or app.js. Consumer mounts must describe
+// business route prefixes, while concrete static assets remain host-owned files.
+func hasStaticAssetLikeConsumerMountSegment(mountPath string) bool {
+	segments := strings.Split(strings.Trim(strings.TrimSpace(mountPath), "/"), "/")
+	for _, segment := range segments {
+		if strings.Contains(segment, ".") {
 			return true
 		}
 	}

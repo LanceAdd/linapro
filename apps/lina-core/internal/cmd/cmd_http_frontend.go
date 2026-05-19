@@ -47,13 +47,13 @@ func newFrontendAssetHandler(
 		if serveRuntimePluginAsset(r, pluginSvc, path) {
 			return
 		}
-		if serveSourceConsumerPluginMountAsset(r, pluginSvc) {
-			return
-		}
 		if serveSourceConsumerPluginAsset(r, pluginSvc, path) {
 			return
 		}
 		if serveEmbeddedFrontendAsset(r, subFS, fileServer, path) {
+			return
+		}
+		if serveSourceConsumerPluginMountAsset(r, pluginSvc) {
 			return
 		}
 		serveSPAFallback(r, fileServer)

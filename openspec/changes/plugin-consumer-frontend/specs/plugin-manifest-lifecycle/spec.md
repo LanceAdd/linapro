@@ -1,5 +1,17 @@
 ## ADDED Requirements
 
+### Requirement: 消费端前端挂载不得遮蔽宿主前端资源
+
+系统 SHALL 拒绝指向宿主静态资源命名空间或类似静态资源路径的源码插件`consumer.frontend.mount_path`。
+
+#### Scenario: 拒绝宿主静态资源命名空间挂载
+- **WHEN** 源码插件声明`consumer.frontend.mount_path`为`/assets`或`/favicon.ico`
+- **THEN** 宿主拒绝该清单
+
+#### Scenario: 拒绝类似静态资源的挂载路径
+- **WHEN** 源码插件声明的`consumer.frontend.mount_path`包含带点号的路径段
+- **THEN** 宿主拒绝该清单
+
 ### Requirement: 插件清单可以声明消费端前端挂载
 
 系统 SHALL 支持源码插件在`plugin.yaml`中通过`consumer.frontend`声明消费端前端挂载能力。

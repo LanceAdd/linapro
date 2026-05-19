@@ -574,6 +574,55 @@ func TestDiscoverPluginVuePathsUseDirectoryConvention(t *testing.T) {
 	}
 }
 
+// TestNormalizeConsumerSpecRejectsHostStaticMounts verifies consumer frontend
+// mounts cannot claim host-owned static asset routes.
+func TestNormalizeConsumerSpecRejectsHostStaticMounts(t *testing.T) {
+	tests := []struct {
+		name      string
+		mountPath string
+	}{
+		{name: "assets namespace", mountPath: "/assets"},
+		{name: "static namespace", mountPath: "/static/app"},
+		{name: "favicon file", mountPath: "/favicon.ico"},
+		{name: "index file", mountPath: "/index.html"},
+		{name: "dotted child segment", mountPath: "/portal/app.js"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := catalog.NormalizeConsumerSpec(&catalog.Manifest{
+				Consumer: &catalog.ConsumerSpec{
+					Frontend: &catalog.ConsumerFrontendSpec{
+						MountPath: tt.mountPath,
+					},
+				},
+			})
+			if err == nil {
+				t.Fatalf("expected consumer frontend mount %q to be rejected", tt.mountPath)
+			}
+		})
+	}
+}
+
+// TestNormalizeConsumerSpecAcceptsBusinessRouteMount verifies normal business
+// route prefixes remain valid consumer frontend mounts.
+func TestNormalizeConsumerSpecAcceptsBusinessRouteMount(t *testing.T) {
+	manifest := &catalog.Manifest{
+		Consumer: &catalog.ConsumerSpec{
+			Frontend: &catalog.ConsumerFrontendSpec{
+				MountPath: "portal/orders",
+			},
+		},
+	}
+
+	if err := catalog.NormalizeConsumerSpec(manifest); err != nil {
+		t.Fatalf("expected business route mount to be accepted, got %v", err)
+	}
+	if manifest.Consumer.Frontend.MountPath != "/portal/orders" {
+		t.Fatalf("expected normalized mount path, got %q", manifest.Consumer.Frontend.MountPath)
+	}
+}
+
 // TestBuildPluginManifestSnapshotIncludesDirectoryDiscoveredAssets verifies
 // source-plugin snapshots include discovered page, slot, and SQL counts.
 func TestBuildPluginManifestSnapshotIncludesDirectoryDiscoveredAssets(t *testing.T) {
