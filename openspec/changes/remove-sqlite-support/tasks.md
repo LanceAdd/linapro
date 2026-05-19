@@ -36,3 +36,21 @@
 - [x] i18n 影响：本次没有新增、修改或删除运行时语言包、插件 `manifest/i18n` 或 apidoc i18n JSON；仅调整文档和测试说明中的数据库支持口径。
 - [x] 缓存影响：本次不新增缓存；移除 SQLite 单机特殊缓存语义后，单机仍使用 PostgreSQL SQL table 后端，集群仍要求 coordination KV/Redis 语义。
 - [x] 审查：`/lina-review` 已完成；未发现阻断项，审查范围限定在 `remove-sqlite-support` 相关代码、配置、CI、E2E 入口、文档与规范，未纳入并行存在的 E2E 重组变更。
+
+## Feedback
+
+- [x] **FB-1**: `linapro-monitor-server` PostgreSQL 单测未注册 `pgsql` 驱动导致 `g.DB()` 初始化 panic。
+
+## Feedback 验证记录
+
+- FB-1 修复：`linapro-monitor-server` monitor 单测包显式导入宿主统一 `pkg/dbdriver` 注册入口，并新增不依赖外部 PostgreSQL 服务的驱动注册 smoke，确保 `pgsql` 类型可在 GoFrame ORM 初始化阶段被发现。
+- 验证通过：`cd apps/lina-plugins && GOWORK=off go test -run '^TestPostgreSQLDriverRegisteredForMonitorTests$' -count=1 -v lina-plugin-linapro-monitor-server/backend/internal/service/monitor`。
+- 验证通过：`cd apps/lina-plugins && GOWORK=off go test -run 'TestUpsertMonitorSnapshotWorksOnPostgreSQL|TestGetDBInfoReturnsPostgreSQLVersion' -count=1 -v lina-plugin-linapro-monitor-server/backend/internal/service/monitor`；本机未设置 `LINA_TEST_PGSQL_LINK`，真实 PostgreSQL 集成断言按既有逻辑跳过。
+- 验证通过：`cd apps/lina-plugins && GOWORK=off go test -count=1 lina-plugin-linapro-monitor-server/backend/internal/service/monitor`。
+- 验证通过：`cd apps/lina-plugins && GOWORK=off go test -p=1 -race -count=1 -v lina-plugin-linapro-monitor-server/backend/internal/service/monitor`。
+- 验证通过：`openspec validate remove-sqlite-support --strict`。
+- 验证通过：`git diff --check -- openspec/changes/remove-sqlite-support/tasks.md` 与 `cd apps/lina-plugins && git diff --check -- linapro-monitor-server/backend/internal/service/monitor/monitor_upsert_test.go`。
+- i18n 影响：本次仅修改后端测试和 OpenSpec 反馈记录，不新增或修改用户可见文案、运行时语言包、插件 `manifest/i18n` 或 apidoc i18n JSON。
+- 缓存影响：本次不新增或修改运行时缓存、缓存键、失效触发点或跨实例同步机制。
+- 数据权限影响：本次不新增或修改 HTTP/API 数据操作接口、数据库查询路径或角色数据权限边界。
+- 审查：`/lina-review` 已完成；审查范围为 `linapro-monitor-server` monitor 单测驱动注册修复与 `remove-sqlite-support` 反馈记录，未发现阻断问题。

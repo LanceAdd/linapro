@@ -61,6 +61,7 @@
 - [x] **FB-3**: 根 `hack/tests` E2E 代码与配置不得耦合任何具体官方源码插件 ID，插件相关用例必须闭环到对应插件目录。
 - [x] **FB-4**: 根路径 E2E 测试文件、配置、测试数据和 baseline 不得耦合任何具体插件信息，插件相关测试资产必须放在对应插件目录。
 - [x] **FB-5**: E2E 测试文件名前缀不再全局递增，改为按当前模块目录从 `TC001` 开始递增。
+- [x] **FB-6**: `extension:plugin` 分片中动态插件资源“仅本人”数据权限和插件管理动作权限夹具在 plugin-full 环境失败。
 
 ## Feedback 验证记录
 
@@ -93,3 +94,12 @@
 - 已通过 `pnpm -C hack/tests test:module -- plugins --list`，确认源码插件全量入口选择 138 个插件自有用例文件，文件均来自 `apps/lina-plugins/<plugin-id>/hack/tests/e2e/`。
 - 已通过 `pnpm -C hack/tests test:host:module -- iam:user --list`，确认 host-only 单模块入口选择 9 个宿主用户模块用例文件。
 - 已通过 `pnpm -C hack/tests test:host:module -- 'plugin:<plugin-id>' --list` 的预期失败验证，确认 host-only 模块入口拒绝需要 `apps/lina-plugins` 的插件 scope。
+- FB-6 修复了 generic plugin resource 查询层与宿主 `sys_role.data_scope` 枚举不一致的问题：`dataScope=4` 现在按“仅本人”过滤，`dataScope=3` 仍按部门过滤；同时将插件管理动作权限 E2E 的查询角色改为不依赖组织插件的全量数据权限，因为该用例只验证插件动作权限。
+- FB-6 已补充后端单测 `TestResolvePluginResourceDataScopeModeUsesHostScopeValues`，防止插件资源数据权限映射再次从宿主角色枚举漂移。
+- FB-6 已通过 `cd apps/lina-core && go test ./internal/service/plugin/internal/integration -count=1`。
+- FB-6 已通过宿主启动/路由绑定包测试：`cd apps/lina-core && go test ./internal/cmd -count=1`。
+- FB-6 已通过 E2E 精确回归：`E2E_BROWSER_CHANNEL=chrome pnpm -C hack/tests exec playwright test e2e/extension/plugin/TC002-plugin-permission-governance.ts e2e/extension/plugin/TC007-plugin-management-action-permissions.ts --config playwright.config.ts --project=chromium --workers=1`，结果 `4 passed (55.4s)`。
+- FB-6 已通过完整分片回归：`E2E_BROWSER_CHANNEL=chrome pnpm -C hack/tests test:module -- extension:plugin`，结果 `26 passed, 1 skipped (2.4m)`。
+- FB-6 已通过 `pnpm -C hack/tests exec tsc --noEmit`、`pnpm -C hack/tests test:validate`、`openspec validate optimize-e2e-suite-runtime --strict` 和 `git diff --check`。
+- FB-6 i18n 影响：本次只调整后端数据权限映射、后端单测和 E2E 测试夹具，不新增或修改前端运行时文案、插件 manifest i18n 或 apidoc i18n JSON。
+- FB-6 缓存一致性影响：本次不新增缓存；插件资源查询继续按请求上下文中的数据权限快照即时应用数据库过滤，不改变插件 runtime freshness、启用状态快照或跨实例失效语义。

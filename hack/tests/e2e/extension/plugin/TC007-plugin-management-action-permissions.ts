@@ -329,7 +329,7 @@ async function createQueryOnlyRole(adminApi: APIRequestContext) {
       name: testRoleName,
       key: testRoleKey,
       sort: 10,
-      dataScope: 3,
+      dataScope: 1,
       status: 1,
       remark: "Plugin management query-only role",
       menuIds: menuIDs,
