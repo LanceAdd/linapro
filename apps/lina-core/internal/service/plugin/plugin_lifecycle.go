@@ -31,6 +31,19 @@ func (s *serviceImpl) Install(
 	pluginID string,
 	options InstallOptions,
 ) (result *DependencyCheckResult, err error) {
+	if err = s.ensurePlatformGovernance(ctx); err != nil {
+		return nil, err
+	}
+	return s.install(ctx, pluginID, options)
+}
+
+// install executes plugin install side effects for platform-guarded callers
+// and trusted startup reconciliation.
+func (s *serviceImpl) install(
+	ctx context.Context,
+	pluginID string,
+	options InstallOptions,
+) (result *DependencyCheckResult, err error) {
 	ctx = withInstallMockData(ctx, options.InstallMockData)
 	defer func() {
 		err = wrapMockDataLoadError(err)
@@ -212,6 +225,9 @@ func (s *serviceImpl) Uninstall(
 	pluginID string,
 	options UninstallOptions,
 ) error {
+	if err := s.ensurePlatformGovernance(ctx); err != nil {
+		return err
+	}
 	manifest, err := s.catalogSvc.GetDesiredManifest(pluginID)
 	if err != nil {
 		return s.uninstallWithoutDesiredManifest(ctx, pluginID, options, err)
@@ -414,6 +430,9 @@ func (s *serviceImpl) UpdateStatus(
 	status int,
 	authorization *HostServiceAuthorizationInput,
 ) error {
+	if err := s.ensurePlatformGovernance(ctx); err != nil {
+		return err
+	}
 	return s.updateStatus(ctx, pluginID, status, authorization)
 }
 
@@ -437,7 +456,7 @@ func (s *serviceImpl) updateStatus(
 			return err
 		}
 	}
-	if err = s.SyncSourcePlugins(ctx); err != nil {
+	if _, err = s.syncAndList(ctx); err != nil {
 		return err
 	}
 	installed, err := s.runtimeSvc.CheckIsInstalled(ctx, pluginID)
@@ -520,11 +539,17 @@ func (s *serviceImpl) updateStatus(
 
 // Enable enables the specified plugin.
 func (s *serviceImpl) Enable(ctx context.Context, pluginID string) error {
+	if err := s.ensurePlatformGovernance(ctx); err != nil {
+		return err
+	}
 	return s.updateStatus(ctx, pluginID, catalog.StatusEnabled, nil)
 }
 
 // Disable disables the specified plugin.
 func (s *serviceImpl) Disable(ctx context.Context, pluginID string) error {
+	if err := s.ensurePlatformGovernance(ctx); err != nil {
+		return err
+	}
 	return s.updateStatus(ctx, pluginID, catalog.StatusDisabled, nil)
 }
 
