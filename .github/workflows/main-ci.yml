@@ -9,7 +9,7 @@ on:
   # 校验所有被推送的分支，不只覆盖受保护分支。
   push:
     branches:
-      - '**'
+    - '**'
   # Validate every pull request target branch before merge.
   # 在合并前校验所有 pull request 目标分支。
   pull_request:
