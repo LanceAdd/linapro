@@ -12,7 +12,7 @@ USAGE
 }
 
 RUN_DIR=""
-BASE_URL="${LINA_PERF_AUDIT_BASE_URL:-http://127.0.0.1:8080}"
+BASE_URL="${LINA_PERF_AUDIT_BASE_URL:-http://127.0.0.1:9120}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

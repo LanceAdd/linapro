@@ -230,7 +230,7 @@
 #### Scenario: 启动内存态演示环境
 
 - **WHEN** 体验者运行`docker compose -f hack/deploy/docker-compose.yaml up`
-- **THEN** Compose 启动`linapro`演示服务并暴露`8080`端口
+- **THEN** Compose 启动`linapro`演示服务并暴露`9120`端口
 - **AND** 应用从`hack/deploy/config.yaml`读取只读运行时配置
 - **AND** 应用连接 Compose 内的`PostgreSQL`服务作为数据库
 - **AND** 应用运行期数据和`PostgreSQL`数据写入容器内`tmpfs`

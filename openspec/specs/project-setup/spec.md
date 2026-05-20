@@ -13,7 +13,7 @@
 
 #### Scenario: 后端服务启动并监听端口
 - **WHEN** 启动后端服务
-- **THEN** 服务在配置的端口（默认 8080）上监听 HTTP 请求
+- **THEN** 服务在配置的端口（默认 9120）上监听 HTTP 请求
 
 ### Requirement: 前端项目初始化
 系统 SHALL 提供基于 Vben5 最新版 + Ant Design Vue 的前端项目，使用 pnpm monorepo 结构。
@@ -61,7 +61,7 @@
 
 #### Scenario: API 请求代理
 - **WHEN** 前端发起 `/api/v1/*` 请求
-- **THEN** 请求被代理到后端服务地址（默认 `http://localhost:8080`）
+- **THEN** 请求被代理到后端服务地址（默认 `http://localhost:9120`）
 
 ### Requirement: 开发环境一键启动
 系统 SHALL 提供 Makefile 命令，支持一键启动前后端开发环境，并提供独立的本地开发环境检查与初始化入口。

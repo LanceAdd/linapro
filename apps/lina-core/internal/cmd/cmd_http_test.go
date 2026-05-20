@@ -129,8 +129,8 @@ func TestBindHostedOpenAPIDocsUsesRequestOrigin(t *testing.T) {
 		},
 		{
 			name:       "frontend proxy reaches backend port",
-			host:       "localhost:8080",
-			wantOrigin: "http://localhost:8080",
+			host:       "localhost:9120",
+			wantOrigin: "http://localhost:9120",
 		},
 		{
 			name:       "https reverse proxy",
@@ -152,7 +152,7 @@ func TestBindHostedOpenAPIDocsUsesRequestOrigin(t *testing.T) {
 				&fakeApiDocService{document: &goai.OpenApiV3{
 					Servers: &goai.Servers{
 						{
-							URL:         "http://localhost:8080",
+							URL:         "http://localhost:9120",
 							Description: "CoreHostEndpoint",
 						},
 					},

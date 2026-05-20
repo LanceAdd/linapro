@@ -18,5 +18,5 @@ COPY .github/image/config.runtime.yaml $WORKDIR/config.yaml
 #                                   START
 ###############################################################################
 WORKDIR $WORKDIR
-EXPOSE 8080
+EXPOSE 9120
 CMD ["./lina"]

@@ -14,8 +14,7 @@ import {
   queryPgRows,
 } from "../../../support/postgres";
 
-const apiBaseURL =
-  process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:8080/api/v1/";
+const apiBaseURL = config.apiBaseURL;
 
 const pluginID = "plugin-dev-dynamic-governance";
 const pluginName = "Runtime Governance Plugin";

@@ -65,7 +65,7 @@ func TestEncodeDecodeRequestEnvelopeRoundTrip(t *testing.T) {
 			InternalPath: "/review-summary",
 			RawPath:      "/x/linapro-demo-dynamic/review-summary",
 			RawQuery:     "q=hello",
-			Host:         "localhost:8080",
+			Host:         "localhost:9120",
 			Scheme:       "http",
 			ClientIP:     "127.0.0.1",
 			Headers: map[string][]string{

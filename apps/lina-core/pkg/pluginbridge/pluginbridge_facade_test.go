@@ -41,7 +41,7 @@ func TestFacadeRequestEnvelopeMatchesCodec(t *testing.T) {
 			PublicPath:  "/x/linapro-demo-dynamic/items/42",
 			RawPath:     "/x/linapro-demo-dynamic/items/42",
 			RawQuery:    "verbose=true",
-			Host:        "localhost:8080",
+			Host:        "localhost:9120",
 			ContentType: "application/json",
 			Headers: map[string][]string{
 				"Accept": {"application/json"},
