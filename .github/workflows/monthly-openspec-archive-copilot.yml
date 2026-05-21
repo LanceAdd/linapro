@@ -63,8 +63,8 @@ env:
   COPILOT_REASONING_EFFORT_INPUT: ${{ inputs.copilot_reasoning_effort }}
 
 jobs:
-  # Runs auto-archive, optional archive consolidation, and PR finalization through GitHub Copilot CLI.
-  # 通过 GitHub Copilot CLI 运行自动归档、可选归档聚合和 PR 收尾。
+  # Runs auto-archive, archive consolidation, and PR finalization through GitHub Copilot CLI.
+  # 通过 GitHub Copilot CLI 运行自动归档、归档聚合和 PR 收尾。
   archive:
     name: Archive and consolidate with GitHub Copilot CLI
     runs-on: ubuntu-latest
@@ -84,8 +84,8 @@ jobs:
       - name: Prepare Shared Runtime
         uses: ./.github/actions/monthly-openspec-setup
 
-      # Archive completed active changes deterministically before optional AI consolidation.
-      # 在可选 AI 聚合前确定性归档已完成的活跃变更。
+      # Archive completed active changes deterministically before AI consolidation.
+      # 在 AI 聚合前确定性归档已完成的活跃变更。
       - name: Run Deterministic OpenSpec Auto Archive
         id: auto-archive
         uses: ./.github/actions/monthly-openspec-auto-archive
@@ -105,18 +105,6 @@ jobs:
         uses: ./.github/actions/monthly-openspec-validate
         with:
           openspec-version: ${{ env.OPENSPEC_VERSION }}
-
-      # Preserve the validated deterministic archive result so optional AI consolidation can be rolled back.
-      # 保存已校验的确定性归档结果，以便可选 AI 聚合失败时回退。
-      - name: Snapshot Deterministic Archive State
-        if: ${{ steps.archive-diff.outputs.changed == 'true' }}
-        run: |
-          set -euo pipefail
-
-          snapshot_dir="${RUNNER_TEMP}/openspec-auto-archive-snapshot"
-          rm -rf "${snapshot_dir}"
-          mkdir -p "${snapshot_dir}"
-          cp -a openspec "${snapshot_dir}/openspec"
 
       # Install and configure GitHub Copilot CLI for unattended consolidation prompt execution.
       # 安装并配置 GitHub Copilot CLI，用于无人值守聚合提示词执行。
@@ -174,7 +162,6 @@ jobs:
       - name: Run Lina Archive Consolidate
         id: archive-consolidate
         if: ${{ steps.archive-diff.outputs.changed == 'true' }}
-        continue-on-error: true
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
         run: |
@@ -211,8 +198,7 @@ jobs:
       # 聚合后立即校验，避免无效聚合结果继续进入 PR 收尾。
       - name: Check Archive Consolidate Temporary Change Cleanup
         id: consolidate-cleanup
-        if: ${{ steps.archive-diff.outputs.changed == 'true' && steps.archive-consolidate.outcome == 'success' }}
-        continue-on-error: true
+        if: ${{ steps.archive-diff.outputs.changed == 'true' }}
         run: |
           set -euo pipefail
 
@@ -224,37 +210,10 @@ jobs:
 
       - name: Validate OpenSpec After Archive Consolidate
         id: consolidate-validate
-        if: ${{ steps.archive-diff.outputs.changed == 'true' && steps.archive-consolidate.outcome == 'success' && steps.consolidate-cleanup.outcome == 'success' }}
-        continue-on-error: true
+        if: ${{ steps.archive-diff.outputs.changed == 'true' }}
         uses: ./.github/actions/monthly-openspec-validate
         with:
           openspec-version: ${{ env.OPENSPEC_VERSION }}
-
-      # Capture optional consolidation failures before restoring the deterministic archive snapshot.
-      # 在恢复确定性归档快照前记录可选聚合失败诊断。
-      - name: Capture Archive Consolidate Failure Diagnostics
-        if: ${{ steps.archive-diff.outputs.changed == 'true' && (steps.archive-consolidate.outcome == 'failure' || steps.consolidate-cleanup.outcome == 'failure' || steps.consolidate-validate.outcome == 'failure') }}
-        run: |
-          set -euo pipefail
-
-          mkdir -p "${COPILOT_LOGS}"
-          git status --short > "${COPILOT_LOGS}/archive-consolidate.failure.status.txt" || true
-          git diff -- openspec > "${COPILOT_LOGS}/archive-consolidate.failure.diff" || true
-          npx -y "@fission-ai/openspec@${OPENSPEC_VERSION}" validate --all > "${COPILOT_LOGS}/archive-consolidate.failure.validate.log" 2>&1 || true
-
-          echo "Archive consolidation failed or produced invalid OpenSpec. Restoring deterministic archive result."
-          cat "${COPILOT_LOGS}/archive-consolidate.failure.validate.log" || true
-
-      # Restore the previously validated deterministic archive result when optional consolidation is invalid.
-      # 当可选聚合无效时恢复此前已校验的确定性归档结果。
-      - name: Restore Deterministic Archive State
-        if: ${{ steps.archive-diff.outputs.changed == 'true' && (steps.archive-consolidate.outcome == 'failure' || steps.consolidate-cleanup.outcome == 'failure' || steps.consolidate-validate.outcome == 'failure') }}
-        run: |
-          set -euo pipefail
-
-          rm -rf openspec
-          cp -a "${RUNNER_TEMP}/openspec-auto-archive-snapshot/openspec" openspec
-          npx -y "@fission-ai/openspec@${OPENSPEC_VERSION}" validate --all
 
       # Validate, commit, push, and open/update the archive pull request.
       # 校验、提交、推送，并创建或更新归档 PR。
@@ -266,18 +225,9 @@ jobs:
           base-branch: ${{ env.TARGET_BRANCH }}
           pr-branch: ${{ env.ARCHIVE_PR_BRANCH }}
 
-      # Fail after PR finalization when deterministic archive left completed candidates behind.
-      # 当确定性归档仍遗留已完成候选时，在 PR 收尾后失败。
-      - name: Assert Auto Archive Completed
-        if: ${{ steps.auto-archive.outputs.had-failures == 'true' }}
-        uses: ./.github/actions/monthly-openspec-assert-archive-complete
-        with:
-          openspec-version: ${{ env.OPENSPEC_VERSION }}
-
       # Upload GitHub Copilot CLI task logs for review and failure diagnosis.
       # 上传 GitHub Copilot CLI 任务日志，便于审查和失败诊断。
       - name: Upload GitHub Copilot CLI Logs
-        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: monthly-openspec-copilot-logs

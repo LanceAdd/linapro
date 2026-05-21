@@ -1,7 +1,7 @@
 # Run deterministic OpenSpec archiving for completed active changes.
-# Scans active changes and applies openspec archive directly before optional AI consolidation.
+# Scans active changes and applies openspec archive directly before AI consolidation.
 # 执行确定性的 OpenSpec 已完成变更归档。
-# 扫描活跃变更，并在可选 AI 聚合前直接调用 openspec archive。
+# 扫描活跃变更，并在 AI 聚合前直接调用 openspec archive。
 name: Monthly OpenSpec Auto Archive
 description: Deterministically archive completed active OpenSpec changes with the pinned CLI version.
 
@@ -109,6 +109,37 @@ runs:
         const archived = [];
         const failed = [];
 
+        function finish(exitCode) {
+          const summaryLines = [
+            `Deterministic OpenSpec archive processed ${candidates.length} completed active change(s).`,
+            `Archived successfully: ${archived.length}`,
+            `Failed to archive: ${failed.length}`,
+          ];
+
+          if (archived.length > 0) {
+            summaryLines.push('', 'Archived changes:', ...archived.map((name) => `- ${name}`));
+          }
+
+          if (failed.length > 0) {
+            summaryLines.push(
+              '',
+              'Archive failures:',
+              ...failed.map((item) => {
+                const completed = Number.isInteger(item.completedTasks) ? item.completedTasks : 'unknown';
+                const total = Number.isInteger(item.totalTasks) ? item.totalTasks : 'unknown';
+                return `- ${item.name}: status=${item.status}, tasks=${completed}/${total}, exit=${item.exitCode}`;
+              }),
+            );
+          }
+
+          appendSummary(summaryLines);
+          writeOutput('archived-count', String(archived.length));
+          writeOutput('failed-count', String(failed.length));
+          writeOutput('had-failures', failed.length > 0 ? 'true' : 'false');
+          writeOutput('failed-json', JSON.stringify(failed));
+          process.exit(exitCode);
+        }
+
         for (const change of candidates) {
           const name = String(change.name || '').trim();
           if (!name) {
@@ -117,7 +148,7 @@ runs:
 
           const hasTaskCounts = Number.isInteger(change.completedTasks) && Number.isInteger(change.totalTasks);
           if (hasTaskCounts && change.completedTasks !== change.totalTasks) {
-            console.log(`Skipping ${name}: task count is incomplete (${change.completedTasks}/${change.totalTasks}).`);
+            console.log(`Failing ${name}: task count is incomplete (${change.completedTasks}/${change.totalTasks}).`);
             failed.push({
               name,
               status: change.status,
@@ -126,7 +157,7 @@ runs:
               exitCode: null,
               summary: `OpenSpec reported status=${change.status} but tasks=${change.completedTasks}/${change.totalTasks}.`,
             });
-            continue;
+            finish(1);
           }
 
           console.log(`\n::group::Archive ${name}`);
@@ -159,34 +190,8 @@ runs:
             exitCode: archiveResult.status,
             summary,
           });
+          finish(1);
         }
 
-        const summaryLines = [
-          `Deterministic OpenSpec archive processed ${candidates.length} completed active change(s).`,
-          `Archived successfully: ${archived.length}`,
-          `Failed to archive: ${failed.length}`,
-        ];
-
-        if (archived.length > 0) {
-          summaryLines.push('', 'Archived changes:', ...archived.map((name) => `- ${name}`));
-        }
-
-        if (failed.length > 0) {
-          summaryLines.push(
-            '',
-            'Archive failures:',
-            ...failed.map((item) => {
-              const completed = Number.isInteger(item.completedTasks) ? item.completedTasks : 'unknown';
-              const total = Number.isInteger(item.totalTasks) ? item.totalTasks : 'unknown';
-              return `- ${item.name}: status=${item.status}, tasks=${completed}/${total}, exit=${item.exitCode}`;
-            }),
-          );
-        }
-
-        appendSummary(summaryLines);
-        writeOutput('archived-count', String(archived.length));
-        writeOutput('failed-count', String(failed.length));
-        writeOutput('had-failures', failed.length > 0 ? 'true' : 'false');
-        writeOutput('failed-json', JSON.stringify(failed));
-        process.exit(0);
+        finish(0);
         NODE
