@@ -75,32 +75,9 @@ jobs:
       - name: Prepare Shared Runtime
         uses: ./.github/actions/monthly-openspec-setup
 
-      # Archive completed active changes deterministically before AI consolidation.
-      # 在 AI 聚合前确定性归档已完成的活跃变更。
-      - name: Run Deterministic OpenSpec Auto Archive
-        id: auto-archive
-        uses: ./.github/actions/monthly-openspec-auto-archive
-        with:
-          openspec-version: ${{ env.OPENSPEC_VERSION }}
-
-      # Detect whether deterministic auto-archive changed repository files.
-      # 检测确定性自动归档是否修改了仓库文件。
-      - name: Detect Archive Changes
-        id: archive-diff
-        uses: ./.github/actions/monthly-openspec-detect-changes
-
-      # Validate immediately after deterministic auto-archive so invalid archive results do not enter consolidation.
-      # 确定性自动归档后立即校验，避免无效归档结果继续进入聚合阶段。
-      - name: Validate OpenSpec After Auto Archive
-        if: ${{ steps.archive-diff.outputs.changed == 'true' }}
-        uses: ./.github/actions/monthly-openspec-validate
-        with:
-          openspec-version: ${{ env.OPENSPEC_VERSION }}
-
-      # Create an isolated Codex home, auth file, OpenSpec shim, and log directory when consolidation may run.
-      # 仅在可能执行聚合时创建隔离的 Codex home、认证文件、OpenSpec 包装入口和日志目录。
+      # Create an isolated Codex home, auth file, OpenSpec shim, and log directory for archive phases.
+      # 为归档阶段创建隔离的 Codex home、认证文件、OpenSpec 包装入口和日志目录。
       - name: Prepare Codex Runtime
-        if: ${{ steps.archive-diff.outputs.changed == 'true' }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
@@ -154,6 +131,49 @@ jobs:
             echo "CODEX_BIN=${codex_bin}"
             echo "CODEX_LOGS=${codex_logs}"
           } >> "${GITHUB_ENV}"
+
+      # Archive completed active changes with the same Codex runtime used by consolidation.
+      # 使用与聚合相同的 Codex 运行时归档已完成的活跃变更。
+      - name: Run Lina Auto Archive
+        id: auto-archive
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${CODEX_HOME}/npm-cache" "${CODEX_LOGS}"
+
+          docker run --rm -i \
+            --user "$(id -u):$(id -g)" \
+            -e CODEX_HOME=/tmp/codex-home \
+            -e HOME=/tmp/codex-home \
+            -e NPM_CONFIG_CACHE=/tmp/codex-home/npm-cache \
+            -e OPENSPEC_VERSION="${OPENSPEC_VERSION}" \
+            -e PATH="/tmp/codex-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            -v "${PWD}:/workspace" \
+            -v "${CODEX_HOME}:/tmp/codex-home" \
+            -v "${CODEX_BIN}:/tmp/codex-bin:ro" \
+            -v "${CODEX_LOGS}:/tmp/codex-logs" \
+            -w /workspace \
+            loads/codex:latest \
+            codex exec \
+              --cd /workspace \
+              --sandbox danger-full-access \
+              --ask-for-approval never \
+              --output-last-message /tmp/codex-logs/auto-archive.md \
+              - < .github/prompts/monthly-openspec-auto-archive.zh-CN.md 2>&1 | tee "${CODEX_LOGS}/auto-archive.console.log"
+
+      # Detect whether the Codex auto-archive phase changed repository files.
+      # 检测 Codex 自动归档阶段是否修改了仓库文件。
+      - name: Detect Archive Changes
+        id: archive-diff
+        uses: ./.github/actions/monthly-openspec-detect-changes
+
+      # Validate immediately after auto-archive so invalid archive results do not enter consolidation.
+      # 自动归档后立即校验，避免无效归档结果继续进入聚合阶段。
+      - name: Validate OpenSpec After Auto Archive
+        if: ${{ steps.archive-diff.outputs.changed == 'true' }}
+        uses: ./.github/actions/monthly-openspec-validate
+        with:
+          openspec-version: ${{ env.OPENSPEC_VERSION }}
 
       # Consolidate archive records only when the auto-archive phase produced changes.
       # 仅在自动归档阶段产生变更时聚合归档记录。

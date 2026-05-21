@@ -83,32 +83,9 @@ jobs:
       - name: Prepare Shared Runtime
         uses: ./.github/actions/monthly-openspec-setup
 
-      # Archive completed active changes deterministically before AI consolidation.
-      # 在 AI 聚合前确定性归档已完成的活跃变更。
-      - name: Run Deterministic OpenSpec Auto Archive
-        id: auto-archive
-        uses: ./.github/actions/monthly-openspec-auto-archive
-        with:
-          openspec-version: ${{ env.OPENSPEC_VERSION }}
-
-      # Detect whether deterministic auto-archive changed repository files.
-      # 检测确定性自动归档是否修改了仓库文件。
-      - name: Detect Archive Changes
-        id: archive-diff
-        uses: ./.github/actions/monthly-openspec-detect-changes
-
-      # Validate immediately after deterministic auto-archive so invalid archive results do not enter consolidation.
-      # 确定性自动归档后立即校验，避免无效归档结果继续进入聚合阶段。
-      - name: Validate OpenSpec After Auto Archive
-        if: ${{ steps.archive-diff.outputs.changed == 'true' }}
-        uses: ./.github/actions/monthly-openspec-validate
-        with:
-          openspec-version: ${{ env.OPENSPEC_VERSION }}
-
-      # Create an isolated Claude Code home, settings file, OpenSpec shim, task runner, and log directory when consolidation may run.
-      # 仅在可能执行聚合时创建隔离的 Claude Code home、设置文件、OpenSpec 包装入口、任务运行器和日志目录。
+      # Create an isolated Claude Code home, settings file, OpenSpec shim, task runner, and log directory for archive phases.
+      # 为归档阶段创建隔离的 Claude Code home、设置文件、OpenSpec 包装入口、任务运行器和日志目录。
       - name: Prepare Claude Code Runtime
-        if: ${{ steps.archive-diff.outputs.changed == 'true' }}
         env:
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
         run: |
@@ -213,6 +190,27 @@ jobs:
             echo "CC_BIN=${cc_bin}"
             echo "CC_LOGS=${cc_logs}"
           } >> "${GITHUB_ENV}"
+
+      # Archive completed active changes with the same Claude Code runtime used by consolidation.
+      # 使用与聚合相同的 Claude Code 运行时归档已完成的活跃变更。
+      - name: Run Lina Auto Archive
+        id: auto-archive
+        run: |
+          "${CC_BIN}/run-cc-task" auto-archive < .github/prompts/monthly-openspec-auto-archive.zh-CN.md
+
+      # Detect whether the Claude Code auto-archive phase changed repository files.
+      # 检测 Claude Code 自动归档阶段是否修改了仓库文件。
+      - name: Detect Archive Changes
+        id: archive-diff
+        uses: ./.github/actions/monthly-openspec-detect-changes
+
+      # Validate immediately after auto-archive so invalid archive results do not enter consolidation.
+      # 自动归档后立即校验，避免无效归档结果继续进入聚合阶段。
+      - name: Validate OpenSpec After Auto Archive
+        if: ${{ steps.archive-diff.outputs.changed == 'true' }}
+        uses: ./.github/actions/monthly-openspec-validate
+        with:
+          openspec-version: ${{ env.OPENSPEC_VERSION }}
 
       # Consolidate archive records only when the auto-archive phase produced changes.
       # 仅在自动归档阶段产生变更时聚合归档记录。
