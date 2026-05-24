@@ -28,6 +28,7 @@ const (
 	pluginDynamicWasmSectionInstallSQL          = pluginbridge.WasmSectionInstallSQL
 	pluginDynamicWasmSectionUninstallSQL        = pluginbridge.WasmSectionUninstallSQL
 	pluginDynamicWasmSectionMockSQL             = pluginbridge.WasmSectionMockSQL
+	pluginDynamicWasmSectionManifestResources   = pluginbridge.WasmSectionManifestResources
 	pluginDynamicWasmSectionBackendHooks        = pluginbridge.WasmSectionBackendHooks
 	pluginDynamicWasmSectionBackendLifecycle    = pluginbridge.WasmSectionBackendLifecycle
 	pluginDynamicWasmSectionBackendRes          = pluginbridge.WasmSectionBackendResources
@@ -123,6 +124,11 @@ type i18nAsset struct {
 type sqlAsset struct {
 	Key     string `json:"key" yaml:"key"`
 	Content string `json:"content" yaml:"content"`
+}
+
+type manifestResource struct {
+	Path          string `json:"path" yaml:"path"`
+	ContentBase64 string `json:"contentBase64" yaml:"contentBase64"`
 }
 
 type menuSpec struct {

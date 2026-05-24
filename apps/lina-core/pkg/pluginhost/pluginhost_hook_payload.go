@@ -3,6 +3,8 @@
 
 package pluginhost
 
+import "lina-core/pkg/pluginhost/internal/valuecopy"
+
 // HookPayloadKey defines one published field name inside a host hook payload.
 type HookPayloadKey string
 
@@ -114,7 +116,7 @@ func BuildPluginLifecycleHookPayloadValues(input PluginLifecycleHookPayloadInput
 
 // CloneHookPayloadValues returns a shallow copy of published hook payload values.
 func CloneHookPayloadValues(values map[string]interface{}) map[string]interface{} {
-	return cloneValueMap(values)
+	return valuecopy.Map(values)
 }
 
 // HookPayloadStringValue extracts one string payload field from the published map.

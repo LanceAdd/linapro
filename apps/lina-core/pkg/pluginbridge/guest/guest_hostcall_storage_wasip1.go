@@ -4,24 +4,6 @@
 
 package guest
 
-// StorageHostService exposes guest-side helpers for the governed storage host service.
-type StorageHostService interface {
-	// Put writes one governed storage object under the given logical path.
-	Put(objectPath string, body []byte, contentType string, overwrite bool) (*HostServiceStorageObject, error)
-	// PutText writes one UTF-8 text object under the given logical path.
-	PutText(objectPath string, content string, contentType string, overwrite bool) (*HostServiceStorageObject, error)
-	// Get reads one governed storage object under the given logical path.
-	Get(objectPath string) ([]byte, *HostServiceStorageObject, bool, error)
-	// GetText reads one UTF-8 text object under the given logical path.
-	GetText(objectPath string) (string, *HostServiceStorageObject, bool, error)
-	// Delete removes one governed storage object under the given logical path.
-	Delete(objectPath string) error
-	// List lists governed storage objects under one logical path prefix.
-	List(prefix string, limit uint32) ([]*HostServiceStorageObject, error)
-	// Stat reads metadata for one governed storage object under the given logical path.
-	Stat(objectPath string) (*HostServiceStorageObject, bool, error)
-}
-
 // storageHostService is the default guest-side storage host-service client.
 type storageHostService struct{}
 

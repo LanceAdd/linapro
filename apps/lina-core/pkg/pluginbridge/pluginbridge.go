@@ -3,16 +3,16 @@
 package pluginbridge
 
 import (
-	"lina-core/pkg/pluginbridge/artifact"
-	"lina-core/pkg/pluginbridge/codec"
 	"lina-core/pkg/pluginbridge/contract"
 	"lina-core/pkg/pluginbridge/guest"
-	"lina-core/pkg/pluginbridge/hostcall"
-	"lina-core/pkg/pluginbridge/hostservice"
+	"lina-core/pkg/pluginbridge/internal/artifact"
+	"lina-core/pkg/pluginbridge/internal/codec"
+	"lina-core/pkg/pluginbridge/internal/hostcall"
+	"lina-core/pkg/pluginbridge/internal/hostservice"
 )
 
-// Public bridge types are preserved as aliases for existing callers while new
-// code can import the focused subcomponents directly.
+// Public bridge types are exposed from the root package so callers do not
+// depend on low-level protocol implementation packages.
 type (
 	BridgeFailureV1          = contract.BridgeFailureV1
 	BridgeRequestEnvelopeV1  = contract.BridgeRequestEnvelopeV1
@@ -67,6 +67,8 @@ type (
 	HostServiceLockReleaseRequest       = hostservice.HostServiceLockReleaseRequest
 	HostServiceLockRenewRequest         = hostservice.HostServiceLockRenewRequest
 	HostServiceLockRenewResponse        = hostservice.HostServiceLockRenewResponse
+	HostServiceManifestGetRequest       = hostservice.HostServiceManifestGetRequest
+	HostServiceManifestGetResponse      = hostservice.HostServiceManifestGetResponse
 	HostServiceNetworkRequest           = hostservice.HostServiceNetworkRequest
 	HostServiceNetworkResponse          = hostservice.HostServiceNetworkResponse
 	HostServiceNotifySendRequest        = hostservice.HostServiceNotifySendRequest
@@ -162,6 +164,7 @@ const (
 	WasmSectionInstallSQL          = artifact.WasmSectionInstallSQL
 	WasmSectionUninstallSQL        = artifact.WasmSectionUninstallSQL
 	WasmSectionMockSQL             = artifact.WasmSectionMockSQL
+	WasmSectionManifestResources   = artifact.WasmSectionManifestResources
 	WasmSectionBackendHooks        = artifact.WasmSectionBackendHooks
 	WasmSectionBackendLifecycle    = artifact.WasmSectionBackendLifecycle
 	WasmSectionBackendResources    = artifact.WasmSectionBackendResources
@@ -204,19 +207,23 @@ const (
 	CapabilityQueueEnqueue = hostservice.CapabilityQueueEnqueue
 	CapabilityNotify       = hostservice.CapabilityNotify
 	CapabilityConfig       = hostservice.CapabilityConfig
+	CapabilityHostConfig   = hostservice.CapabilityHostConfig
+	CapabilityManifest     = hostservice.CapabilityManifest
 
-	HostServiceRuntime = hostservice.HostServiceRuntime
-	HostServiceCron    = hostservice.HostServiceCron
-	HostServiceStorage = hostservice.HostServiceStorage
-	HostServiceNetwork = hostservice.HostServiceNetwork
-	HostServiceData    = hostservice.HostServiceData
-	HostServiceCache   = hostservice.HostServiceCache
-	HostServiceLock    = hostservice.HostServiceLock
-	HostServiceSecret  = hostservice.HostServiceSecret
-	HostServiceEvent   = hostservice.HostServiceEvent
-	HostServiceQueue   = hostservice.HostServiceQueue
-	HostServiceNotify  = hostservice.HostServiceNotify
-	HostServiceConfig  = hostservice.HostServiceConfig
+	HostServiceRuntime    = hostservice.HostServiceRuntime
+	HostServiceCron       = hostservice.HostServiceCron
+	HostServiceStorage    = hostservice.HostServiceStorage
+	HostServiceNetwork    = hostservice.HostServiceNetwork
+	HostServiceData       = hostservice.HostServiceData
+	HostServiceCache      = hostservice.HostServiceCache
+	HostServiceLock       = hostservice.HostServiceLock
+	HostServiceSecret     = hostservice.HostServiceSecret
+	HostServiceEvent      = hostservice.HostServiceEvent
+	HostServiceQueue      = hostservice.HostServiceQueue
+	HostServiceNotify     = hostservice.HostServiceNotify
+	HostServiceConfig     = hostservice.HostServiceConfig
+	HostServiceHostConfig = hostservice.HostServiceHostConfig
+	HostServiceManifest   = hostservice.HostServiceManifest
 
 	HostServiceMethodRuntimeLogWrite    = hostservice.HostServiceMethodRuntimeLogWrite
 	HostServiceMethodRuntimeStateGet    = hostservice.HostServiceMethodRuntimeStateGet
@@ -253,6 +260,8 @@ const (
 	HostServiceMethodConfigBool         = hostservice.HostServiceMethodConfigBool
 	HostServiceMethodConfigInt          = hostservice.HostServiceMethodConfigInt
 	HostServiceMethodConfigDuration     = hostservice.HostServiceMethodConfigDuration
+	HostServiceMethodHostConfigGet      = hostservice.HostServiceMethodHostConfigGet
+	HostServiceMethodManifestGet        = hostservice.HostServiceMethodManifestGet
 
 	HostServiceStorageVisibilityPrivate = hostservice.HostServiceStorageVisibilityPrivate
 	HostServiceStorageVisibilityPublic  = hostservice.HostServiceStorageVisibilityPublic
@@ -260,7 +269,7 @@ const (
 	HostServiceCacheValueKindInt        = hostservice.HostServiceCacheValueKindInt
 )
 
-// Bridge and artifact functions forward to focused subcomponents.
+// Bridge and artifact functions forward to internal protocol components.
 var (
 	ValidateRouteContracts        = contract.ValidateRouteContracts
 	NormalizeBridgeSpec           = contract.NormalizeBridgeSpec
@@ -365,8 +374,6 @@ var (
 	UnmarshalHostServiceDataTransactionRequest  = hostservice.UnmarshalHostServiceDataTransactionRequest
 	MarshalHostServiceDataTransactionResponse   = hostservice.MarshalHostServiceDataTransactionResponse
 	UnmarshalHostServiceDataTransactionResponse = hostservice.UnmarshalHostServiceDataTransactionResponse
-	DecodeHostServiceDataListPlan               = hostservice.DecodeHostServiceDataListPlan
-	DecodeHostServiceDataGetPlan                = hostservice.DecodeHostServiceDataGetPlan
 	MarshalHostServiceCacheGetRequest           = hostservice.MarshalHostServiceCacheGetRequest
 	UnmarshalHostServiceCacheGetRequest         = hostservice.UnmarshalHostServiceCacheGetRequest
 	MarshalHostServiceCacheGetResponse          = hostservice.MarshalHostServiceCacheGetResponse
@@ -399,6 +406,10 @@ var (
 	UnmarshalHostServiceConfigKeyRequest        = hostservice.UnmarshalHostServiceConfigKeyRequest
 	MarshalHostServiceConfigValueResponse       = hostservice.MarshalHostServiceConfigValueResponse
 	UnmarshalHostServiceConfigValueResponse     = hostservice.UnmarshalHostServiceConfigValueResponse
+	MarshalHostServiceManifestGetRequest        = hostservice.MarshalHostServiceManifestGetRequest
+	UnmarshalHostServiceManifestGetRequest      = hostservice.UnmarshalHostServiceManifestGetRequest
+	MarshalHostServiceManifestGetResponse       = hostservice.MarshalHostServiceManifestGetResponse
+	UnmarshalHostServiceManifestGetResponse     = hostservice.UnmarshalHostServiceManifestGetResponse
 	MarshalHostServiceNotifySendRequest         = hostservice.MarshalHostServiceNotifySendRequest
 	UnmarshalHostServiceNotifySendRequest       = hostservice.UnmarshalHostServiceNotifySendRequest
 	MarshalHostServiceNotifySendResponse        = hostservice.MarshalHostServiceNotifySendResponse

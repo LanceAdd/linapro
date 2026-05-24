@@ -44,6 +44,9 @@ import (
 	"lina-core/pkg/dialect"
 	"lina-core/pkg/logger"
 	"lina-core/pkg/pluginhost"
+	pluginserviceconfig "lina-core/pkg/pluginservice/config"
+	pluginservicehostconfig "lina-core/pkg/pluginservice/hostconfig"
+	pluginservicemanifest "lina-core/pkg/pluginservice/manifest"
 )
 
 // httpRuntime groups long-lived services that must be shared across HTTP
@@ -238,6 +241,7 @@ func newHTTPRuntime(ctx context.Context, configSvc config.Service) (*httpRuntime
 		authSvc,
 		authTokenSvc,
 		bizCtxSvc,
+		configSvc,
 		scopeSvc,
 		i18nSvc,
 		pluginSvc,
@@ -264,7 +268,9 @@ func newHTTPRuntime(ctx context.Context, configSvc config.Service) (*httpRuntime
 		hostLockSvc,
 		notifySvc,
 		configSvc,
-		hostServices.Config(),
+		pluginserviceconfig.NewFactory("", ""),
+		pluginservicehostconfig.New(configSvc),
+		pluginservicemanifest.NewFactory(""),
 	); err != nil {
 		closeHTTPCoordinationAfterInitError(ctx, coordinationSvc)
 		return nil, err

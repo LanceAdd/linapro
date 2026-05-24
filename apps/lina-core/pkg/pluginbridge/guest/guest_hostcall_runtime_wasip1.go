@@ -11,28 +11,6 @@ import (
 	"github.com/gogf/gf/v2/errors/gerror"
 )
 
-// RuntimeHostService exposes guest-side helpers for the runtime host service.
-type RuntimeHostService interface {
-	// Log writes one structured runtime log entry through the host.
-	Log(level int, message string, fields map[string]string) error
-	// StateGet reads one plugin-scoped runtime state value by key.
-	StateGet(key string) (string, bool, error)
-	// StateSet writes one plugin-scoped runtime state value.
-	StateSet(key string, value string) error
-	// StateDelete removes one plugin-scoped runtime state value.
-	StateDelete(key string) error
-	// StateGetInt reads one integer runtime state value.
-	StateGetInt(key string) (int, bool, error)
-	// StateSetInt writes one integer runtime state value.
-	StateSetInt(key string, value int) error
-	// Now returns the current host time string.
-	Now() (string, error)
-	// UUID returns one host-generated unique identifier string.
-	UUID() (string, error)
-	// Node returns the current host node identity string.
-	Node() (string, error)
-}
-
 // runtimeHostService is the default guest-side runtime host-service client.
 type runtimeHostService struct{}
 

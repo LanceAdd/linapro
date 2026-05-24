@@ -3,7 +3,10 @@
 
 package pluginhost
 
-import bridgecontract "lina-core/pkg/pluginbridge/contract"
+import (
+	bridgecontract "lina-core/pkg/pluginbridge/contract"
+	"lina-core/pkg/pluginhost/internal/manifestview"
+)
 
 // ManifestSnapshot exposes the review-oriented manifest snapshot fields needed
 // by source-plugin upgrade callbacks without leaking host catalog internals.
@@ -20,60 +23,11 @@ type ManifestSnapshot interface {
 	Values() *bridgecontract.ManifestSnapshotV1
 }
 
-// manifestSnapshot is the host-owned immutable view passed to source-plugin
-// runtime upgrade callbacks.
-type manifestSnapshot struct {
-	value bridgecontract.ManifestSnapshotV1
-}
-
 // NewManifestSnapshot creates one published manifest snapshot wrapper from the
 // shared lifecycle callback contract.
 func NewManifestSnapshot(value *bridgecontract.ManifestSnapshotV1) ManifestSnapshot {
 	if value == nil {
 		return nil
 	}
-	return &manifestSnapshot{
-		value: *value,
-	}
-}
-
-// ID returns the plugin identifier recorded in the manifest snapshot.
-func (s *manifestSnapshot) ID() string {
-	if s == nil {
-		return ""
-	}
-	return s.value.ID
-}
-
-// Name returns the plugin display name recorded in the manifest snapshot.
-func (s *manifestSnapshot) Name() string {
-	if s == nil {
-		return ""
-	}
-	return s.value.Name
-}
-
-// Version returns the plugin version recorded in the manifest snapshot.
-func (s *manifestSnapshot) Version() string {
-	if s == nil {
-		return ""
-	}
-	return s.value.Version
-}
-
-// Type returns the plugin type recorded in the manifest snapshot.
-func (s *manifestSnapshot) Type() string {
-	if s == nil {
-		return ""
-	}
-	return s.value.Type
-}
-
-// Values returns a copy of the shared typed manifest snapshot contract.
-func (s *manifestSnapshot) Values() *bridgecontract.ManifestSnapshotV1 {
-	if s == nil {
-		return nil
-	}
-	value := s.value
-	return &value
+	return manifestview.NewSnapshot(value)
 }

@@ -208,6 +208,10 @@ type RuntimeUpgradeHostServiceChange struct {
 	FromPaths []string
 	// ToPaths is the target storage path set after upgrade.
 	ToPaths []string
+	// FromKeys is the effective public host config key set before upgrade.
+	FromKeys []string
+	// ToKeys is the target public host config key set after upgrade.
+	ToKeys []string
 }
 
 // RuntimeUpgradeResult describes one completed explicit runtime upgrade action.

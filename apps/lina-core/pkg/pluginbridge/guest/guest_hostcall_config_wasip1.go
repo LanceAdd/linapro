@@ -5,28 +5,13 @@
 package guest
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gogf/gf/v2/errors/gerror"
 )
-
-// ConfigHostService exposes guest-side helpers for the read-only config host service.
-type ConfigHostService interface {
-	// Get reads one configuration value as JSON. Empty key and "." read the full config snapshot.
-	Get(key string) (string, bool, error)
-	// Exists reports whether one configuration key exists.
-	Exists(key string) (bool, error)
-	// String reads one configuration value as a string.
-	String(key string) (string, bool, error)
-	// Bool reads one configuration value as a bool.
-	Bool(key string) (bool, bool, error)
-	// Int reads one configuration value as an int.
-	Int(key string) (int, bool, error)
-	// Duration reads one configuration value as a duration.
-	Duration(key string) (time.Duration, bool, error)
-}
 
 // configHostService is the default guest-side config host-service client.
 type configHostService struct{}
@@ -39,27 +24,39 @@ func Config() ConfigHostService {
 	return defaultConfigHostService
 }
 
-// Get reads one configuration value as JSON. Empty key and "." read the full config snapshot.
+// Get reads one plugin-scoped configuration value as JSON.
 func (*configHostService) Get(key string) (string, bool, error) {
 	return configValue(HostServiceMethodConfigGet, key)
 }
 
 // Exists reports whether one configuration key exists.
 func (*configHostService) Exists(key string) (bool, error) {
-	_, found, err := configValue(HostServiceMethodConfigExists, key)
+	_, found, err := configValue(HostServiceMethodConfigGet, key)
 	return found, err
 }
 
 // String reads one configuration value as a string.
 func (*configHostService) String(key string) (string, bool, error) {
-	return configValue(HostServiceMethodConfigString, key)
+	value, found, err := configValue(HostServiceMethodConfigGet, key)
+	if err != nil || !found {
+		return "", found, err
+	}
+	var decoded string
+	if err = json.Unmarshal([]byte(value), &decoded); err == nil {
+		return decoded, true, nil
+	}
+	return strings.Trim(value, `"`), true, nil
 }
 
 // Bool reads one configuration value as a bool.
 func (*configHostService) Bool(key string) (bool, bool, error) {
-	value, found, err := configValue(HostServiceMethodConfigBool, key)
+	value, found, err := configValue(HostServiceMethodConfigGet, key)
 	if err != nil || !found {
 		return false, found, err
+	}
+	var decoded bool
+	if err = json.Unmarshal([]byte(value), &decoded); err == nil {
+		return decoded, true, nil
 	}
 	parsed, err := strconv.ParseBool(strings.TrimSpace(value))
 	if err != nil {
@@ -70,9 +67,13 @@ func (*configHostService) Bool(key string) (bool, bool, error) {
 
 // Int reads one configuration value as an int.
 func (*configHostService) Int(key string) (int, bool, error) {
-	value, found, err := configValue(HostServiceMethodConfigInt, key)
+	value, found, err := configValue(HostServiceMethodConfigGet, key)
 	if err != nil || !found {
 		return 0, found, err
+	}
+	var decoded int
+	if err = json.Unmarshal([]byte(value), &decoded); err == nil {
+		return decoded, true, nil
 	}
 	parsed, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil {
@@ -83,9 +84,13 @@ func (*configHostService) Int(key string) (int, bool, error) {
 
 // Duration reads one configuration value as a duration.
 func (*configHostService) Duration(key string) (time.Duration, bool, error) {
-	value, found, err := configValue(HostServiceMethodConfigDuration, key)
+	value, found, err := configValue(HostServiceMethodConfigGet, key)
 	if err != nil || !found {
 		return 0, found, err
+	}
+	var decoded string
+	if err = json.Unmarshal([]byte(value), &decoded); err == nil {
+		value = decoded
 	}
 	parsed, err := time.ParseDuration(strings.TrimSpace(value))
 	if err != nil {

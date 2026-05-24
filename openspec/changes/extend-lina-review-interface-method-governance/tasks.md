@@ -33,6 +33,7 @@
 - [x] **FB-10**: 将 `AGENTS.md` 改造为保留规范标题与强制规则加载入口，并迁移领域细则到 `.agents/rules/*.md`。
 - [x] **FB-11**: 补充动态插件目录结构规范，并将插件规则拆分为通用资源、源码插件和动态插件三类约束。
 - [x] **FB-12**: 调整动态插件目录规范，要求动态插件与源码插件保持 `api`、`controller`、`service` 同构开发结构，仅运行时对接方式不同。
+- [x] **FB-13**: 收敛 `lina-review` 技能中与项目规范和规则文件重复的领域细则，改为明确引用 `AGENTS.md` 与 `.agents/rules/*.md`。
 
 ## 5. Feedback Execution Record
 
@@ -126,3 +127,12 @@
 - FB-12 测试策略：本反馈属于项目治理类变更，不新增单元测试或 E2E；使用 OpenSpec 严格校验、静态检索和 `git diff --check` 作为验证证据。
 - FB-12 验证：已运行 `openspec validate extend-lina-review-interface-method-governance --strict`，通过；已运行 `git diff --check -- AGENTS.md .agents/rules/plugin.md .agents/skills/lina-feedback/SKILL.md .agents/skills/lina-review/SKILL.md openspec/changes/extend-lina-review-interface-method-governance/tasks.md openspec/changes/extend-lina-review-interface-method-governance/specs/spec-governance/spec.md`，通过；已运行静态检索确认旧口径 `动态插件不要求 controller/service`、`不应强制创建`、`不得被强制套用`、`错误要求采用源码插件 controller/service` 等冲突措辞无命中；已运行静态检索确认 `AGENTS.md`、`.agents/rules/plugin.md`、`lina-feedback`、`lina-review` 和 `spec-governance` 均包含插件同构开发、共享后端开发结构、动态插件必须维护 `backend/api/`、`backend/internal/controller/`、`backend/internal/service/` 以及桥接层不得替代 controller/service 分层的要求。
 - FB-12 Review：已按 `lina-review` 口径完成审查。审查范围包括 `AGENTS.md`、`.agents/rules/plugin.md`、`.agents/skills/lina-feedback/SKILL.md`、`.agents/skills/lina-review/SKILL.md`、本变更 `tasks.md` 和 `specs/spec-governance/spec.md`；已读取规则文件为 `.agents/rules/plugin.md`、`.agents/rules/openspec.md`、`.agents/rules/documentation.md`、`.agents/rules/testing.md` 和 `.agents/rules/i18n.md`。未发现阻塞问题。该反馈不修改生产 Go 代码、REST API 行为、数据库结构、数据权限、运行时缓存、前端 UI、语言包资源、动态插件产物或开发工具脚本；Go 编译门禁、WASM 构建和 E2E 不适用，OpenSpec 校验、diff 空白检查和静态检索均已通过。
+- FB-13 根因分析：`lina-review` 已声明 `AGENTS.md` 和 `.agents/rules/*.md` 是唯一事实来源，但文件后半部分仍复制维护接口契约、后端 Go、SQL、E2E、缓存、数据权限和开发工具等领域规则细则，导致规则来源重复、后续维护容易漂移。
+- FB-13 影响分析：重写 `.agents/skills/lina-review/SKILL.md`，将其收敛为审查编排、范围收集、规则加载、报告结构和阻塞语义；新增 `spec-governance` 场景，要求 `lina-review` 不重复维护领域规则细则；不修改生产代码、运行时配置、API、数据库、插件产物或前端行为。
+- FB-13 已读取规则文件：已按 `AGENTS.md` 新入口读取 `.agents/rules/documentation.md`、`.agents/rules/openspec.md`、`.agents/rules/testing.md` 和 `.agents/rules/i18n.md`；本反馈属于项目治理文档变更，确认不涉及生产 Go、HTTP API、SQL/DAO、运行时缓存、数据权限、源码插件实现、前端运行时页面或开发工具执行逻辑，其他领域规则无实现影响。
+- FB-13 i18n 影响评估：本次只调整审查技能说明、OpenSpec 任务记录和治理规范，不新增、修改或删除运行时用户可见文案、前端 UI 文案、API 文档源文本、宿主或插件 `manifest/i18n`、`apidoc i18n JSON`、插件清单、语言配置或翻译缓存。
+- FB-13 缓存一致性影响评估：本次不修改生产缓存、缓存键、失效路径、快照刷新、跨实例同步、分布式协调或运行时状态；仅要求缓存审查细则回到 `.agents/rules/cache-consistency.md`。
+- FB-13 数据权限影响评估：本次不新增或修改数据操作接口、查询条件、详情读取、写操作、下载、聚合统计、插件 host service 数据访问或角色数据权限边界；仅要求数据权限审查细则回到 `.agents/rules/data-permission.md`。
+- FB-13 开发工具跨平台影响评估：本次不新增或修改开发工具、脚本、CI 命令实现、默认测试入口或平台专属运维步骤；仅要求开发工具审查细则回到 `.agents/rules/dev-tooling.md`。
+- FB-13 测试策略：本反馈属于项目治理类变更，不新增单元测试或 E2E；使用 OpenSpec 严格校验、静态检索和 `git diff --check` 作为验证证据。
+- FB-13 验证：已运行 `openspec validate extend-lina-review-interface-method-governance --strict`，通过；已运行 `git diff --check -- .agents/skills/lina-review/SKILL.md openspec/changes/extend-lina-review-interface-method-governance/tasks.md openspec/changes/extend-lina-review-interface-method-governance/specs/spec-governance/spec.md`，通过；已运行静态检索确认 `lina-review` 不再保留 `Unix timestamp`、`time.Time`、`ON DUPLICATE`、`Dependencies`、`bizerr`、`gerror`、`context.Background`、`cluster.enabled`、`TC{NNN}`、`internal/util`、`文件命名规范`、`显式依赖注入`、`日志上下文传播`、`数据权限接入` 等领域细则关键词。

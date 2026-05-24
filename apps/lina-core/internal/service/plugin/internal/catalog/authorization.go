@@ -35,6 +35,8 @@ type HostServiceAuthorizationDecision struct {
 	ResourceRefs []string
 	// Tables lists the confirmed data tables for this service.
 	Tables []string
+	// Keys lists the confirmed public host config keys for this service.
+	Keys []string
 }
 
 // HasResourceScopedHostServices reports whether any host service declaration
@@ -44,7 +46,7 @@ func HasResourceScopedHostServices(specs []*pluginbridge.HostServiceSpec) bool {
 		if spec == nil {
 			continue
 		}
-		if len(spec.Paths) > 0 || len(spec.Resources) > 0 || len(spec.Tables) > 0 {
+		if len(spec.Paths) > 0 || len(spec.Resources) > 0 || len(spec.Tables) > 0 || len(spec.Keys) > 0 {
 			return true
 		}
 	}
@@ -167,6 +169,7 @@ func BuildAuthorizedHostServiceSpecs(
 		paths        map[string]struct{}
 		resourceRefs map[string]struct{}
 		tables       map[string]struct{}
+		keys         map[string]struct{}
 	}
 
 	serviceMap := make(map[string]*pluginbridge.HostServiceSpec, len(requestedSpecs))
@@ -193,6 +196,7 @@ func BuildAuthorizedHostServiceSpecs(
 			paths:        make(map[string]struct{}),
 			resourceRefs: make(map[string]struct{}),
 			tables:       make(map[string]struct{}),
+			keys:         make(map[string]struct{}),
 		}
 		for _, method := range item.Methods {
 			normalizedMethod := strings.TrimSpace(strings.ToLower(method))
@@ -239,6 +243,17 @@ func BuildAuthorizedHostServiceSpecs(
 			}
 			state.tables[normalizedTable] = struct{}{}
 		}
+		keySet := buildHostServiceKeySet(spec.Keys)
+		for _, key := range item.Keys {
+			normalizedKey := strings.TrimSpace(key)
+			if normalizedKey == "" {
+				continue
+			}
+			if _, ok = keySet[normalizedKey]; !ok {
+				return nil, gerror.Newf("host service %s authorization contains undeclared key: %s", service, key)
+			}
+			state.keys[normalizedKey] = struct{}{}
+		}
 		decisionMap[service] = state
 	}
 
@@ -248,9 +263,9 @@ func BuildAuthorizedHostServiceSpecs(
 			continue
 		}
 		// Services without governed targets are effectively capability-only and
-		// can be copied through directly. Path/resource/table-scoped services are
+		// can be copied through directly. Path/resource/table/key-scoped services are
 		// included only when the host explicitly keeps some confirmed targets.
-		if len(spec.Paths) == 0 && len(spec.Resources) == 0 && len(spec.Tables) == 0 {
+		if len(spec.Paths) == 0 && len(spec.Resources) == 0 && len(spec.Tables) == 0 && len(spec.Keys) == 0 {
 			authorized = append(authorized, spec)
 			continue
 		}
@@ -294,6 +309,19 @@ func BuildAuthorizedHostServiceSpecs(
 			continue
 		}
 
+		if len(spec.Keys) > 0 {
+			keys := filterKeysBySet(spec.Keys, decision.keys)
+			if len(keys) == 0 {
+				continue
+			}
+			authorized = append(authorized, &pluginbridge.HostServiceSpec{
+				Service: spec.Service,
+				Methods: methods,
+				Keys:    keys,
+			})
+			continue
+		}
+
 		resources := filterResourcesBySet(spec.Resources, decision.resourceRefs)
 		if len(resources) == 0 {
 			continue
@@ -306,6 +334,18 @@ func BuildAuthorizedHostServiceSpecs(
 		})
 	}
 	return pluginbridge.NormalizeHostServiceSpecs(authorized)
+}
+
+// buildHostServiceKeySet normalizes declared key-scoped authorizations into one lookup set.
+func buildHostServiceKeySet(keys []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		normalizedKey := strings.TrimSpace(key)
+		if normalizedKey != "" {
+			set[normalizedKey] = struct{}{}
+		}
+	}
+	return set
 }
 
 // buildHostServicePathSet normalizes declared path-scoped authorizations into
@@ -424,6 +464,20 @@ func filterTablesBySet(tables []string, allowed map[string]struct{}) []string {
 		}
 		if _, ok := allowed[normalizedTable]; ok {
 			filtered = append(filtered, normalizedTable)
+		}
+	}
+	return filtered
+}
+
+// filterKeysBySet narrows one ordered key slice to the confirmed set.
+func filterKeysBySet(keys []string, allowed map[string]struct{}) []string {
+	if len(allowed) == 0 {
+		return []string{}
+	}
+	filtered := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if _, ok := allowed[key]; ok {
+			filtered = append(filtered, key)
 		}
 	}
 	return filtered

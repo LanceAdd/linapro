@@ -18,8 +18,8 @@ import (
 	"github.com/gogf/gf/v2/os/gfile"
 
 	"lina-core/internal/service/config"
-	bridgehostcall "lina-core/pkg/pluginbridge/hostcall"
-	bridgehostservice "lina-core/pkg/pluginbridge/hostservice"
+	bridgehostcall "lina-core/pkg/pluginbridge"
+	bridgehostservice "lina-core/pkg/pluginbridge"
 	"lina-core/pkg/pluginfs"
 )
 

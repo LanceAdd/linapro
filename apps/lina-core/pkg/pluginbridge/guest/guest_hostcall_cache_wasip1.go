@@ -4,20 +4,6 @@
 
 package guest
 
-// CacheHostService exposes guest-side helpers for the governed distributed cache host service.
-type CacheHostService interface {
-	// Get reads one governed cache value from the authorized namespace.
-	Get(namespace string, key string) (*HostServiceCacheValue, bool, error)
-	// Set writes one governed cache value into the authorized namespace.
-	Set(namespace string, key string, value string, expireSeconds int64) (*HostServiceCacheValue, error)
-	// Delete removes one governed cache value from the authorized namespace.
-	Delete(namespace string, key string) error
-	// Incr increments one governed cache integer value inside the authorized namespace.
-	Incr(namespace string, key string, delta int64, expireSeconds int64) (*HostServiceCacheValue, error)
-	// Expire updates one governed cache expiration policy inside the authorized namespace.
-	Expire(namespace string, key string, expireSeconds int64) (bool, string, error)
-}
-
 // cacheHostService is the default guest-side distributed cache host-service
 // client.
 type cacheHostService struct{}

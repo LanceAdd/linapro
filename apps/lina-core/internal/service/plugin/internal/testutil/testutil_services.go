@@ -19,6 +19,7 @@ import (
 	"lina-core/pkg/pluginhost"
 	pluginserviceconfig "lina-core/pkg/pluginservice/config"
 	"lina-core/pkg/pluginservice/contract"
+	pluginservicemanifest "lina-core/pkg/pluginservice/manifest"
 )
 
 // Services groups the wired plugin sub-services used by package-level tests.
@@ -109,17 +110,25 @@ func NewServices() *Services {
 // testHostServices publishes the minimal host service directory needed by
 // source-plugin callbacks exercised in plugin service tests.
 type testHostServices struct {
-	// configSvc exposes read-only GoFrame configuration to source plugins.
-	configSvc contract.ConfigService
+	// configFactory creates plugin-scoped configuration views.
+	configFactory contract.ConfigServiceFactory
+	// manifestFactory creates plugin-scoped manifest resource views.
+	manifestFactory contract.ManifestServiceFactory
+	// pluginID scopes source-plugin host services when non-empty.
+	pluginID string
 }
 
 // Ensure testHostServices satisfies the source-plugin host service directory.
 var _ pluginhost.HostServices = (*testHostServices)(nil)
 
+// Ensure testHostServices can return plugin-scoped host service views.
+var _ pluginhost.ScopedHostServicesFactory = (*testHostServices)(nil)
+
 // newTestHostServices creates a host service directory for integration tests.
 func newTestHostServices() pluginhost.HostServices {
 	return &testHostServices{
-		configSvc: pluginserviceconfig.New(),
+		configFactory:   pluginserviceconfig.NewFactory("", ""),
+		manifestFactory: pluginservicemanifest.NewFactory(""),
 	}
 }
 
@@ -135,16 +144,39 @@ func (s *testHostServices) BizCtx() contract.BizCtxService { return nil }
 // Cache returns no cache service for plugin integration tests.
 func (s *testHostServices) Cache() contract.CacheService { return nil }
 
-// Config returns the test host configuration service.
+// Config returns the plugin-scoped test host configuration service.
 func (s *testHostServices) Config() contract.ConfigService {
+	if s == nil || s.configFactory == nil {
+		return nil
+	}
+	return s.configFactory.ForPlugin(s.pluginID)
+}
+
+// ForPlugin returns a plugin-bound host service view for source-plugin callbacks.
+func (s *testHostServices) ForPlugin(pluginID string) pluginhost.HostServices {
 	if s == nil {
 		return nil
 	}
-	return s.configSvc
+	return &testHostServices{
+		configFactory:   s.configFactory,
+		manifestFactory: s.manifestFactory,
+		pluginID:        pluginID,
+	}
 }
+
+// HostConfig returns no host config service for plugin integration tests.
+func (s *testHostServices) HostConfig() contract.HostConfigService { return nil }
 
 // I18n returns no i18n service for plugin integration tests.
 func (s *testHostServices) I18n() contract.I18nService { return nil }
+
+// Manifest returns the plugin-scoped manifest service for plugin integration tests.
+func (s *testHostServices) Manifest() contract.ManifestService {
+	if s == nil || s.manifestFactory == nil {
+		return nil
+	}
+	return s.manifestFactory.ForPlugin(s.pluginID)
+}
 
 // Notify returns no notification service for plugin integration tests.
 func (s *testHostServices) Notify() contract.NotifyService { return nil }

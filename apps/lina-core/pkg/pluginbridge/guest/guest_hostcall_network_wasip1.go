@@ -4,12 +4,6 @@
 
 package guest
 
-// HTTPHostService exposes guest-side helpers for the governed outbound HTTP host service.
-type HTTPHostService interface {
-	// Request executes one governed outbound HTTP request through the host.
-	Request(targetURL string, request *HostServiceNetworkRequest) (*HostServiceNetworkResponse, error)
-}
-
 // httpHostService is the default guest-side outbound HTTP host-service client.
 type httpHostService struct{}
 

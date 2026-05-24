@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -18,9 +20,9 @@ import (
 
 	"lina-core/internal/service/plugin/internal/catalog"
 	"lina-core/pkg/bizerr"
-	bridgeartifact "lina-core/pkg/pluginbridge/artifact"
+	bridgeartifact "lina-core/pkg/pluginbridge"
+	bridgehostservice "lina-core/pkg/pluginbridge"
 	bridgecontract "lina-core/pkg/pluginbridge/contract"
-	bridgehostservice "lina-core/pkg/pluginbridge/hostservice"
 	"lina-core/pkg/pluginfs"
 )
 
@@ -170,6 +172,10 @@ func (s *serviceImpl) ParseRuntimeWasmArtifactContent(filePath string, content [
 	if err != nil {
 		return nil, err
 	}
+	manifestResources, err := parseRuntimeArtifactManifestResources(filePath, sections)
+	if err != nil {
+		return nil, err
+	}
 	hookSpecs, err := parseRuntimeArtifactHookSpecs(filePath, embeddedManifest.ID, sections)
 	if err != nil {
 		return nil, err
@@ -271,6 +277,16 @@ func (s *serviceImpl) ParseRuntimeWasmArtifactContent(filePath string, content [
 	if runtimeMetadata.APIDocI18NAssetCount <= 0 {
 		runtimeMetadata.APIDocI18NAssetCount = len(apiDocI18NAssets)
 	}
+	if runtimeMetadata.ManifestResourceCount > 0 && runtimeMetadata.ManifestResourceCount != len(manifestResources) {
+		return nil, gerror.Newf(
+			"Dynamic plugin manifest resource count does not match metadata: metadata=%d actual=%d",
+			runtimeMetadata.ManifestResourceCount,
+			len(manifestResources),
+		)
+	}
+	if runtimeMetadata.ManifestResourceCount <= 0 {
+		runtimeMetadata.ManifestResourceCount = len(manifestResources)
+	}
 	if runtimeMetadata.RouteCount > 0 && runtimeMetadata.RouteCount != len(routeContracts) {
 		return nil, gerror.Newf(
 			"Dynamic plugin route count does not match metadata: metadata=%d actual=%d",
@@ -283,27 +299,29 @@ func (s *serviceImpl) ParseRuntimeWasmArtifactContent(filePath string, content [
 	}
 
 	return &catalog.ArtifactSpec{
-		Path:                 filePath,
-		Checksum:             fmt.Sprintf("%x", sha256.Sum256(content)),
-		RuntimeKind:          runtimeKind,
-		ABIVersion:           abiVersion,
-		FrontendAssetCount:   maxInt(runtimeMetadata.FrontendAssetCount, 0),
-		I18NAssetCount:       maxInt(runtimeMetadata.I18NAssetCount, 0),
-		APIDocI18NAssetCount: maxInt(runtimeMetadata.APIDocI18NAssetCount, 0),
-		SQLAssetCount:        maxInt(runtimeMetadata.SQLAssetCount, 0),
-		RouteCount:           maxInt(runtimeMetadata.RouteCount, 0),
-		Manifest:             embeddedManifest,
-		FrontendAssets:       frontendAssets,
-		InstallSQLAssets:     installSQLAssets,
-		UninstallSQLAssets:   uninstallSQLAssets,
-		MockSQLAssets:        mockSQLAssets,
-		HookSpecs:            hookSpecs,
-		LifecycleContracts:   lifecycleContracts,
-		ResourceSpecs:        resourceSpecs,
-		RouteContracts:       routeContracts,
-		BridgeSpec:           bridgeSpec,
-		Capabilities:         capabilities,
-		HostServices:         hostServices,
+		Path:                  filePath,
+		Checksum:              fmt.Sprintf("%x", sha256.Sum256(content)),
+		RuntimeKind:           runtimeKind,
+		ABIVersion:            abiVersion,
+		FrontendAssetCount:    maxInt(runtimeMetadata.FrontendAssetCount, 0),
+		I18NAssetCount:        maxInt(runtimeMetadata.I18NAssetCount, 0),
+		APIDocI18NAssetCount:  maxInt(runtimeMetadata.APIDocI18NAssetCount, 0),
+		SQLAssetCount:         maxInt(runtimeMetadata.SQLAssetCount, 0),
+		ManifestResourceCount: maxInt(runtimeMetadata.ManifestResourceCount, 0),
+		RouteCount:            maxInt(runtimeMetadata.RouteCount, 0),
+		Manifest:              embeddedManifest,
+		FrontendAssets:        frontendAssets,
+		InstallSQLAssets:      installSQLAssets,
+		UninstallSQLAssets:    uninstallSQLAssets,
+		MockSQLAssets:         mockSQLAssets,
+		ManifestResources:     manifestResources,
+		HookSpecs:             hookSpecs,
+		LifecycleContracts:    lifecycleContracts,
+		ResourceSpecs:         resourceSpecs,
+		RouteContracts:        routeContracts,
+		BridgeSpec:            bridgeSpec,
+		Capabilities:          capabilities,
+		HostServices:          hostServices,
 	}, nil
 }
 
@@ -425,10 +443,11 @@ func buildRuntimeArtifactRemark(manifest *catalog.Manifest) string {
 		return ""
 	}
 	return fmt.Sprintf(
-		"The host validated one %s runtime artifact using ABI %s with %d embedded frontend assets, %d install SQL assets, %d uninstall SQL assets, %d mock SQL assets, and %d dynamic routes declared.",
+		"The host validated one %s runtime artifact using ABI %s with %d embedded frontend assets, %d manifest/config resources, %d install SQL assets, %d uninstall SQL assets, %d mock SQL assets, and %d dynamic routes declared.",
 		manifest.RuntimeArtifact.RuntimeKind,
 		manifest.RuntimeArtifact.ABIVersion,
 		manifest.RuntimeArtifact.FrontendAssetCount,
+		manifest.RuntimeArtifact.ManifestResourceCount,
 		len(manifest.RuntimeArtifact.InstallSQLAssets),
 		len(manifest.RuntimeArtifact.UninstallSQLAssets),
 		len(manifest.RuntimeArtifact.MockSQLAssets),
@@ -553,6 +572,95 @@ func parseRuntimeArtifactSQLAssets(
 		}
 	}
 	return assets, nil
+}
+
+// parseRuntimeArtifactManifestResources restores embedded manifest/config
+// resources and validates source-layout path semantics before exposing them to
+// release-bound config and manifest views.
+func parseRuntimeArtifactManifestResources(
+	filePath string,
+	sections map[string][]byte,
+) ([]*catalog.ArtifactManifestResource, error) {
+	sectionContent, ok := sections[bridgeartifact.WasmSectionManifestResources]
+	if !ok {
+		return []*catalog.ArtifactManifestResource{}, nil
+	}
+
+	assets := make([]*catalog.ArtifactManifestResource, 0)
+	if err := json.Unmarshal(sectionContent, &assets); err != nil {
+		return nil, gerror.Wrapf(err, "Failed to parse dynamic plugin manifest resource custom section: %s", filePath)
+	}
+	seen := make(map[string]struct{}, len(assets))
+	for _, asset := range assets {
+		if asset == nil {
+			return nil, gerror.Newf("Dynamic plugin manifest resource custom section contains a null item: %s", filePath)
+		}
+		normalizedPath, err := normalizeRuntimeArtifactManifestResourcePath(asset.Path)
+		if err != nil {
+			return nil, gerror.Wrapf(err, "Dynamic plugin manifest resource path is invalid: %s", filePath)
+		}
+		if _, exists := seen[normalizedPath]; exists {
+			return nil, gerror.Newf("Dynamic plugin manifest resource path is duplicated: %s", normalizedPath)
+		}
+		seen[normalizedPath] = struct{}{}
+
+		if strings.TrimSpace(asset.ContentBase64) == "" {
+			return nil, gerror.Newf("Dynamic plugin manifest resource content cannot be empty: %s", normalizedPath)
+		}
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(asset.ContentBase64))
+		if err != nil {
+			return nil, gerror.Wrapf(err, "Failed to parse dynamic plugin manifest resource content: %s", normalizedPath)
+		}
+		if len(decoded) == 0 {
+			return nil, gerror.Newf("Dynamic plugin manifest resource content cannot be empty: %s", normalizedPath)
+		}
+		asset.Path = normalizedPath
+		asset.Content = decoded
+	}
+	return assets, nil
+}
+
+// normalizeRuntimeArtifactManifestResourcePath validates artifact resource paths
+// using plugin source layout semantics. Config defaults keep the full
+// manifest/config path; declaration resources keep the full manifest path and
+// are later projected relative to manifest/ for HostServices.Manifest().
+func normalizeRuntimeArtifactManifestResourcePath(resourcePath string) (string, error) {
+	raw := strings.ReplaceAll(strings.TrimSpace(resourcePath), "\\", "/")
+	if raw == "" || raw == "." {
+		return "", gerror.New("manifest resource path cannot be empty or root")
+	}
+	if strings.Contains(raw, "://") {
+		parsed, err := url.Parse(raw)
+		if err == nil && parsed.Scheme != "" {
+			return "", gerror.Newf("manifest resource path cannot be URL: %s", resourcePath)
+		}
+	}
+	if strings.HasPrefix(raw, "/") {
+		return "", gerror.Newf("manifest resource path cannot be absolute: %s", resourcePath)
+	}
+	if len(raw) >= 2 && ((raw[0] >= 'A' && raw[0] <= 'Z') || (raw[0] >= 'a' && raw[0] <= 'z')) && raw[1] == ':' {
+		return "", gerror.Newf("manifest resource path cannot contain drive prefix: %s", resourcePath)
+	}
+
+	normalized := path.Clean(raw)
+	if normalized == "." || normalized == ".." || strings.HasPrefix(normalized, "../") {
+		return "", gerror.Newf("manifest resource path escapes manifest root: %s", resourcePath)
+	}
+	if normalized == "manifest/config/config.yaml" || normalized == "manifest/config/config.example.yaml" {
+		return normalized, nil
+	}
+	if !strings.HasPrefix(normalized, "manifest/") {
+		return "", gerror.Newf("manifest resource path must use manifest source layout: %s", resourcePath)
+	}
+	for _, reserved := range []string{"manifest/config", "manifest/sql", "manifest/i18n"} {
+		if normalized == reserved || strings.HasPrefix(normalized, reserved+"/") {
+			return "", gerror.Newf("manifest resource path is managed by a dedicated pipeline: %s", resourcePath)
+		}
+	}
+	if path.Ext(normalized) != ".yaml" {
+		return "", gerror.Newf("manifest resource path must be a YAML resource: %s", resourcePath)
+	}
+	return normalized, nil
 }
 
 // parseRuntimeArtifactHookSpecs restores and validates embedded hook specs.

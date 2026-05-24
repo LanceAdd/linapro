@@ -4,6 +4,7 @@
 package datahost
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -12,22 +13,28 @@ import (
 
 	"lina-core/internal/service/plugin/internal/catalog"
 	"lina-core/pkg/pluginbridge"
-	"lina-core/pkg/plugindb/shared"
+	"lina-core/pkg/plugindb"
 )
 
 // decodeDataListPlan restores a typed plugindb list plan or synthesizes one
 // from the legacy list request fields.
-func decodeDataListPlan(table string, request *pluginbridge.HostServiceDataListRequest) (*shared.DataQueryPlan, error) {
-	plan, err := pluginbridge.DecodeHostServiceDataListPlan(request)
-	if err != nil {
-		return nil, err
+func decodeDataListPlan(table string, request *pluginbridge.HostServiceDataListRequest) (*plugindb.DataQueryPlan, error) {
+	var (
+		requestPlan *plugindb.DataQueryPlan
+		err         error
+	)
+	if request != nil && len(request.PlanJSON) > 0 {
+		requestPlan, err = plugindb.UnmarshalQueryPlanJSON(request.PlanJSON)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if plan == nil {
+	if requestPlan == nil {
 		request = normalizeDataListRequest(request)
-		plan = &shared.DataQueryPlan{
+		requestPlan = &plugindb.DataQueryPlan{
 			Table:  strings.TrimSpace(table),
-			Action: shared.DataPlanActionList,
-			Page: &shared.DataPagination{
+			Action: plugindb.DataPlanActionList,
+			Page: &plugindb.DataPagination{
 				PageNum:  request.PageNum,
 				PageSize: request.PageSize,
 			},
@@ -36,81 +43,92 @@ func decodeDataListPlan(table string, request *pluginbridge.HostServiceDataListR
 			if strings.TrimSpace(value) == "" {
 				continue
 			}
-			filter, filterErr := shared.NewEQFilter(field, value)
-			if filterErr != nil {
-				return nil, filterErr
+			valueJSON, marshalErr := json.Marshal(value)
+			if marshalErr != nil {
+				return nil, marshalErr
 			}
-			plan.Filters = append(plan.Filters, filter)
+			filter := &plugindb.DataFilter{
+				Field:     field,
+				Operator:  plugindb.DataFilterOperatorEQ,
+				ValueJSON: valueJSON,
+			}
+			requestPlan.Filters = append(requestPlan.Filters, filter)
 		}
-		return plan, nil
+		return requestPlan, nil
 	}
-	if strings.TrimSpace(plan.Table) == "" {
-		plan.Table = strings.TrimSpace(table)
+	if strings.TrimSpace(requestPlan.Table) == "" {
+		requestPlan.Table = strings.TrimSpace(table)
 	}
-	if strings.TrimSpace(plan.Table) != strings.TrimSpace(table) {
-		return nil, gerror.Newf("plugindb query plan table mismatch: %s != %s", plan.Table, table)
+	if strings.TrimSpace(requestPlan.Table) != strings.TrimSpace(table) {
+		return nil, gerror.Newf("plugindb query plan table mismatch: %s != %s", requestPlan.Table, table)
 	}
-	if plan.Action == "" {
-		plan.Action = shared.DataPlanActionList
+	if requestPlan.Action == "" {
+		requestPlan.Action = plugindb.DataPlanActionList
 	}
-	if plan.Action != shared.DataPlanActionList && plan.Action != shared.DataPlanActionCount {
-		return nil, gerror.Newf("plugindb list request action is invalid: %s", plan.Action)
+	if requestPlan.Action != plugindb.DataPlanActionList && requestPlan.Action != plugindb.DataPlanActionCount {
+		return nil, gerror.Newf("plugindb list request action is invalid: %s", requestPlan.Action)
 	}
-	if plan.Action == shared.DataPlanActionList {
-		if plan.Page == nil {
-			plan.Page = &shared.DataPagination{PageNum: defaultDataListPageNum, PageSize: defaultDataListPageSize}
+	if requestPlan.Action == plugindb.DataPlanActionList {
+		if requestPlan.Page == nil {
+			requestPlan.Page = &plugindb.DataPagination{PageNum: defaultDataListPageNum, PageSize: defaultDataListPageSize}
 		}
-		if plan.Page.PageNum <= 0 {
-			plan.Page.PageNum = defaultDataListPageNum
+		if requestPlan.Page.PageNum <= 0 {
+			requestPlan.Page.PageNum = defaultDataListPageNum
 		}
-		if plan.Page.PageSize <= 0 {
-			plan.Page.PageSize = defaultDataListPageSize
+		if requestPlan.Page.PageSize <= 0 {
+			requestPlan.Page.PageSize = defaultDataListPageSize
 		}
-		if plan.Page.PageSize > maxDataListPageSize {
-			plan.Page.PageSize = maxDataListPageSize
+		if requestPlan.Page.PageSize > maxDataListPageSize {
+			requestPlan.Page.PageSize = maxDataListPageSize
 		}
 	}
-	return plan, shared.ValidateDataQueryPlan(plan)
+	return requestPlan, plugindb.ValidateDataQueryPlan(requestPlan)
 }
 
 // decodeDataGetPlan restores a typed plugindb get plan or synthesizes one from
 // the legacy get request key.
-func decodeDataGetPlan(table string, request *pluginbridge.HostServiceDataGetRequest) (*shared.DataQueryPlan, error) {
-	plan, err := pluginbridge.DecodeHostServiceDataGetPlan(request)
-	if err != nil {
-		return nil, err
+func decodeDataGetPlan(table string, request *pluginbridge.HostServiceDataGetRequest) (*plugindb.DataQueryPlan, error) {
+	var (
+		requestPlan *plugindb.DataQueryPlan
+		err         error
+	)
+	if request != nil && len(request.PlanJSON) > 0 {
+		requestPlan, err = plugindb.UnmarshalQueryPlanJSON(request.PlanJSON)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if plan == nil {
-		plan = &shared.DataQueryPlan{Table: strings.TrimSpace(table), Action: shared.DataPlanActionGet}
+	if requestPlan == nil {
+		requestPlan = &plugindb.DataQueryPlan{Table: strings.TrimSpace(table), Action: plugindb.DataPlanActionGet}
 	}
-	if strings.TrimSpace(plan.Table) == "" {
-		plan.Table = strings.TrimSpace(table)
+	if strings.TrimSpace(requestPlan.Table) == "" {
+		requestPlan.Table = strings.TrimSpace(table)
 	}
-	if strings.TrimSpace(plan.Table) != strings.TrimSpace(table) {
-		return nil, gerror.Newf("plugindb get request table mismatch: %s != %s", plan.Table, table)
+	if strings.TrimSpace(requestPlan.Table) != strings.TrimSpace(table) {
+		return nil, gerror.Newf("plugindb get request table mismatch: %s != %s", requestPlan.Table, table)
 	}
-	if plan.Action == "" {
-		plan.Action = shared.DataPlanActionGet
+	if requestPlan.Action == "" {
+		requestPlan.Action = plugindb.DataPlanActionGet
 	}
-	if plan.Action != shared.DataPlanActionGet {
-		return nil, gerror.Newf("plugindb get request action is invalid: %s", plan.Action)
+	if requestPlan.Action != plugindb.DataPlanActionGet {
+		return nil, gerror.Newf("plugindb get request action is invalid: %s", requestPlan.Action)
 	}
-	if request != nil && len(plan.KeyJSON) == 0 {
-		plan.KeyJSON = append([]byte(nil), request.KeyJSON...)
+	if request != nil && len(requestPlan.KeyJSON) == 0 {
+		requestPlan.KeyJSON = append([]byte(nil), request.KeyJSON...)
 	}
-	if len(plan.KeyJSON) == 0 {
+	if len(requestPlan.KeyJSON) == 0 {
 		return nil, gerror.New("data key cannot be empty")
 	}
-	return plan, shared.ValidateDataQueryPlan(plan)
+	return requestPlan, plugindb.ValidateDataQueryPlan(requestPlan)
 }
 
 // applyPlanFilters applies typed plugindb filters against authorized resource fields.
-func applyPlanFilters(model *gdb.Model, resource *catalog.ResourceSpec, filters []*shared.DataFilter) (*gdb.Model, error) {
+func applyPlanFilters(model *gdb.Model, resource *catalog.ResourceSpec, filters []*plugindb.DataFilter) (*gdb.Model, error) {
 	if model == nil || resource == nil || len(filters) == 0 {
 		return model, nil
 	}
 	for _, filter := range filters {
-		if err := shared.ValidateDataFilter(filter); err != nil {
+		if err := plugindb.ValidateDataFilter(filter); err != nil {
 			return nil, err
 		}
 		column := resolveResourceFieldColumn(resource, filter.Field)
@@ -118,14 +136,14 @@ func applyPlanFilters(model *gdb.Model, resource *catalog.ResourceSpec, filters 
 			return nil, gerror.Newf("plugindb filter field is not authorized: %s", filter.Field)
 		}
 		switch filter.Operator {
-		case shared.DataFilterOperatorEQ:
-			value, err := shared.UnmarshalValueJSON(filter.ValueJSON)
+		case plugindb.DataFilterOperatorEQ:
+			value, err := plugindb.UnmarshalValueJSON(filter.ValueJSON)
 			if err != nil {
 				return nil, err
 			}
 			model = model.Where(column, value)
-		case shared.DataFilterOperatorIN:
-			values, err := shared.UnmarshalValuesJSON(filter.ValuesJSON)
+		case plugindb.DataFilterOperatorIN:
+			values, err := plugindb.UnmarshalValuesJSON(filter.ValuesJSON)
 			if err != nil {
 				return nil, err
 			}
@@ -133,8 +151,8 @@ func applyPlanFilters(model *gdb.Model, resource *catalog.ResourceSpec, filters 
 				return nil, gerror.Newf("plugindb filter %s requires at least one value", filter.Operator)
 			}
 			model = model.WhereIn(column, values)
-		case shared.DataFilterOperatorLike:
-			value, err := shared.UnmarshalValueJSON(filter.ValueJSON)
+		case plugindb.DataFilterOperatorLike:
+			value, err := plugindb.UnmarshalValueJSON(filter.ValueJSON)
 			if err != nil {
 				return nil, err
 			}
@@ -172,13 +190,13 @@ func buildPlanFieldArgs(resource *catalog.ResourceSpec, selected []string) ([]an
 }
 
 // buildPlanOrderBy builds the ORDER BY clause for the typed query plan.
-func buildPlanOrderBy(resource *catalog.ResourceSpec, orders []*shared.DataOrder) (string, error) {
+func buildPlanOrderBy(resource *catalog.ResourceSpec, orders []*plugindb.DataOrder) (string, error) {
 	if len(orders) == 0 {
 		return buildResourceOrderBy(resource), nil
 	}
 	parts := make([]string, 0, len(orders))
 	for _, order := range orders {
-		if err := shared.ValidateDataOrder(order); err != nil {
+		if err := plugindb.ValidateDataOrder(order); err != nil {
 			return "", err
 		}
 		column := resolveResourceFieldColumn(resource, order.Field)
@@ -186,7 +204,7 @@ func buildPlanOrderBy(resource *catalog.ResourceSpec, orders []*shared.DataOrder
 			return "", gerror.Newf("plugindb order field is not authorized: %s", order.Field)
 		}
 		direction := "ASC"
-		if order.Direction == shared.DataOrderDirectionDESC {
+		if order.Direction == plugindb.DataOrderDirectionDESC {
 			direction = "DESC"
 		}
 		parts = append(parts, column+" "+direction)

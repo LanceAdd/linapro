@@ -66,17 +66,6 @@ func invokeHostService(service string, method string, resourceRef string, table 
 	return invokeHostCall(OpcodeServiceInvoke, MarshalHostServiceRequestEnvelope(request))
 }
 
-// HostDBQueryResult preserves the previous guest-side result shape for callers
-// that have not yet migrated to the structured data service SDK.
-type HostDBQueryResult struct {
-	// Columns lists the result set column names in row order.
-	Columns []string
-	// Rows stores the tabular result values as string slices per row.
-	Rows [][]string
-	// RowCount reports the total number of rows returned by the legacy query.
-	RowCount int
-}
-
 // HostDBQuery is no longer part of the public host service protocol.
 func HostDBQuery(_ string, _ []string, _ int) (*HostDBQueryResult, error) {
 	return nil, gerror.New("HostDBQuery has been removed; use the structured pluginbridge.Data() service instead")

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -28,6 +29,26 @@ func TestBuildRuntimeWasmArtifactFromSourceEmbedsDeclaredAssets(t *testing.T) {
 		t,
 		filepath.Join(pluginDir, "manifest", "sql", "001-plugin-dev-dynamic-builder.sql"),
 		"SELECT 1;",
+	)
+	mustWriteFile(
+		t,
+		filepath.Join(pluginDir, "manifest", "config", "config.example.yaml"),
+		"monitor:\n  interval: 30s\n",
+	)
+	mustWriteFile(
+		t,
+		filepath.Join(pluginDir, "manifest", "config", "config.yaml"),
+		"monitor:\n  interval: 45s\n",
+	)
+	mustWriteFile(
+		t,
+		filepath.Join(pluginDir, "manifest", "metadata.yaml"),
+		"title: Dynamic Builder\n",
+	)
+	mustWriteFile(
+		t,
+		filepath.Join(pluginDir, "manifest", "resources", "policy.yaml"),
+		"enabled: true\n",
 	)
 	mustWriteFile(
 		t,
@@ -149,8 +170,12 @@ func TestBuildRuntimeWasmArtifactFromSourceEmbedsDeclaredAssets(t *testing.T) {
 	if err = json.Unmarshal(sections[pluginDynamicWasmSectionDynamic], metadata); err != nil {
 		t.Fatalf("expected dynamic section json to unmarshal, got error: %v", err)
 	}
-	if metadata.FrontendAssetCount != 1 || metadata.I18NAssetCount != 1 || metadata.APIDocI18NAssetCount != 1 || metadata.SQLAssetCount != 2 {
-		t.Fatalf("expected dynamic metadata counts 1/1/1/2, got %#v", metadata)
+	if metadata.FrontendAssetCount != 1 ||
+		metadata.I18NAssetCount != 1 ||
+		metadata.APIDocI18NAssetCount != 1 ||
+		metadata.SQLAssetCount != 2 ||
+		metadata.ManifestResourceCount != 4 {
+		t.Fatalf("expected dynamic metadata counts 1/1/1/2/4, got %#v", metadata)
 	}
 
 	var frontend []*frontendAsset
@@ -175,6 +200,25 @@ func TestBuildRuntimeWasmArtifactFromSourceEmbedsDeclaredAssets(t *testing.T) {
 	}
 	if len(apiDocI18N) != 1 || apiDocI18N[0].Locale != "zh-CN" || !strings.Contains(apiDocI18N[0].Content, "plugins.plugin_dev_dynamic_builder") {
 		t.Fatalf("unexpected embedded apidoc i18n assets: %#v", apiDocI18N)
+	}
+
+	var manifestResources []*manifestResource
+	if err = json.Unmarshal(sections[pluginDynamicWasmSectionManifestResources], &manifestResources); err != nil {
+		t.Fatalf("expected manifest resource section json to unmarshal, got error: %v", err)
+	}
+	expectedManifestPaths := []string{
+		"manifest/config/config.example.yaml",
+		"manifest/config/config.yaml",
+		"manifest/metadata.yaml",
+		"manifest/resources/policy.yaml",
+	}
+	if got := manifestResourcePaths(manifestResources); strings.Join(got, ",") != strings.Join(expectedManifestPaths, ",") {
+		t.Fatalf("expected manifest resource paths %#v, got %#v", expectedManifestPaths, got)
+	}
+	for _, resource := range manifestResources {
+		if strings.HasPrefix(resource.Path, "manifest/sql/") || strings.HasPrefix(resource.Path, "manifest/i18n/") {
+			t.Fatalf("expected dedicated sql/i18n resources to be excluded, got %#v", manifestResources)
+		}
 	}
 
 	var hooks []*hookSpec
@@ -260,6 +304,31 @@ func TestBuildRuntimeWasmArtifactFromSourceEmbedsDeclaredAssets(t *testing.T) {
 	}
 	if !strings.Contains(runtimeStrings, "_initialize") {
 		t.Fatalf("expected runtime guest wasm to expose _initialize, got output: %s", runtimeStrings)
+	}
+}
+
+func TestCollectManifestResourcesScansDirectoryFallback(t *testing.T) {
+	pluginDir := t.TempDir()
+	mustWriteFile(t, filepath.Join(pluginDir, "manifest", "config", "config.example.yaml"), "name: example\n")
+	mustWriteFile(t, filepath.Join(pluginDir, "manifest", "config", "config.yaml"), "name: actual\n")
+	mustWriteFile(t, filepath.Join(pluginDir, "manifest", "metadata.yaml"), "title: demo\n")
+	mustWriteFile(t, filepath.Join(pluginDir, "manifest", "resources", "policy.yaml"), "enabled: true\n")
+	mustWriteFile(t, filepath.Join(pluginDir, "manifest", "resources", "ignored.json"), "{}\n")
+	mustWriteFile(t, filepath.Join(pluginDir, "manifest", "sql", "001-demo.sql"), "SELECT 1;\n")
+	mustWriteFile(t, filepath.Join(pluginDir, "manifest", "i18n", "zh-CN", "plugin.json"), "{}\n")
+
+	resources, err := collectManifestResources(pluginDir, nil)
+	if err != nil {
+		t.Fatalf("expected manifest resource collection to succeed, got error: %v", err)
+	}
+	expectedPaths := []string{
+		"manifest/config/config.example.yaml",
+		"manifest/config/config.yaml",
+		"manifest/metadata.yaml",
+		"manifest/resources/policy.yaml",
+	}
+	if got := manifestResourcePaths(resources); strings.Join(got, ",") != strings.Join(expectedPaths, ",") {
+		t.Fatalf("expected manifest resources %#v, got %#v", expectedPaths, got)
 	}
 }
 
@@ -735,6 +804,18 @@ func mustWriteFile(t *testing.T, filePath string, content string) {
 	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 		t.Fatalf("failed to write file %s: %v", filePath, err)
 	}
+}
+
+func manifestResourcePaths(resources []*manifestResource) []string {
+	paths := make([]string, 0, len(resources))
+	for _, resource := range resources {
+		if resource == nil {
+			continue
+		}
+		paths = append(paths, resource.Path)
+	}
+	sort.Strings(paths)
+	return paths
 }
 
 func readCommandOutput(name string, args ...string) (string, error) {

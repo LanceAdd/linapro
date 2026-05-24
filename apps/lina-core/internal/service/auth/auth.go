@@ -86,6 +86,15 @@ type TenantTokenIssuer interface {
 	// ReissueTenantTokenFromBearer parses the current bearer token and delegates
 	// to ReissueTenantToken for tenant-switch validation and revocation.
 	ReissueTenantTokenFromBearer(ctx context.Context, tokenString string, tenantID int) (*TenantTokenOutput, error)
+	// IssueImpersonationToken signs a host-owned impersonation access token for
+	// a platform administrator entering target tenant scope. It creates the
+	// online-session row and primes role access using platform administrator
+	// grants while retaining the target tenant as the request data boundary.
+	IssueImpersonationToken(ctx context.Context, in ImpersonationTokenIssueInput) (*ImpersonationTokenOutput, error)
+	// RevokeImpersonationToken validates that tokenString is an impersonation
+	// access token for tenantID when tenantID is non-zero, then revokes the
+	// session and token access cache through the host auth state store.
+	RevokeImpersonationToken(ctx context.Context, tokenString string, tenantID int) error
 }
 
 // Ensure serviceImpl implements Service.
@@ -213,4 +222,18 @@ type TenantTokenReissueInput struct {
 type TenantTokenOutput struct {
 	AccessToken  string // JWT access token
 	RefreshToken string // JWT refresh token
+}
+
+// ImpersonationTokenIssueInput defines host-owned impersonation token issue fields.
+type ImpersonationTokenIssueInput struct {
+	ActingUserID int // Platform administrator user ID
+	TenantID     int // Target tenant ID
+}
+
+// ImpersonationTokenOutput defines a host-owned impersonation token response.
+type ImpersonationTokenOutput struct {
+	AccessToken  string // JWT access token
+	TokenID      string // Host token/session identifier
+	TenantID     int    // Target tenant ID
+	ActingUserID int    // Platform administrator user ID
 }

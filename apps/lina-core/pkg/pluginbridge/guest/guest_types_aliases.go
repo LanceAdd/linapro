@@ -3,10 +3,10 @@
 package guest
 
 import (
-	"lina-core/pkg/pluginbridge/codec"
 	"lina-core/pkg/pluginbridge/contract"
-	"lina-core/pkg/pluginbridge/hostcall"
-	"lina-core/pkg/pluginbridge/hostservice"
+	"lina-core/pkg/pluginbridge/internal/codec"
+	"lina-core/pkg/pluginbridge/internal/hostcall"
+	"lina-core/pkg/pluginbridge/internal/hostservice"
 )
 
 type (
@@ -59,6 +59,8 @@ type (
 	HostServiceLockRenewRequest         = hostservice.HostServiceLockRenewRequest
 	HostServiceLockRenewResponse        = hostservice.HostServiceLockRenewResponse
 	HostServiceLockReleaseRequest       = hostservice.HostServiceLockReleaseRequest
+	HostServiceManifestGetRequest       = hostservice.HostServiceManifestGetRequest
+	HostServiceManifestGetResponse      = hostservice.HostServiceManifestGetResponse
 	HostServiceConfigKeyRequest         = hostservice.HostServiceConfigKeyRequest
 	HostServiceConfigValueResponse      = hostservice.HostServiceConfigValueResponse
 	HostServiceNotifySendRequest        = hostservice.HostServiceNotifySendRequest
@@ -82,6 +84,8 @@ const (
 	HostServiceLock                     = hostservice.HostServiceLock
 	HostServiceNotify                   = hostservice.HostServiceNotify
 	HostServiceConfig                   = hostservice.HostServiceConfig
+	HostServiceHostConfig               = hostservice.HostServiceHostConfig
+	HostServiceManifest                 = hostservice.HostServiceManifest
 	HostServiceMethodRuntimeLogWrite    = hostservice.HostServiceMethodRuntimeLogWrite
 	HostServiceMethodRuntimeStateGet    = hostservice.HostServiceMethodRuntimeStateGet
 	HostServiceMethodRuntimeStateSet    = hostservice.HostServiceMethodRuntimeStateSet
@@ -115,6 +119,8 @@ const (
 	HostServiceMethodConfigBool         = hostservice.HostServiceMethodConfigBool
 	HostServiceMethodConfigInt          = hostservice.HostServiceMethodConfigInt
 	HostServiceMethodConfigDuration     = hostservice.HostServiceMethodConfigDuration
+	HostServiceMethodHostConfigGet      = hostservice.HostServiceMethodHostConfigGet
+	HostServiceMethodManifestGet        = hostservice.HostServiceMethodManifestGet
 	HostServiceMethodNotifySend         = hostservice.HostServiceMethodNotifySend
 	HostServiceMethodCronRegister       = hostservice.HostServiceMethodCronRegister
 )
@@ -177,6 +183,8 @@ var (
 	MarshalHostServiceLockReleaseRequest        = hostservice.MarshalHostServiceLockReleaseRequest
 	MarshalHostServiceConfigKeyRequest          = hostservice.MarshalHostServiceConfigKeyRequest
 	UnmarshalHostServiceConfigValueResponse     = hostservice.UnmarshalHostServiceConfigValueResponse
+	MarshalHostServiceManifestGetRequest        = hostservice.MarshalHostServiceManifestGetRequest
+	UnmarshalHostServiceManifestGetResponse     = hostservice.UnmarshalHostServiceManifestGetResponse
 	MarshalHostServiceNotifySendRequest         = hostservice.MarshalHostServiceNotifySendRequest
 	UnmarshalHostServiceNotifySendResponse      = hostservice.UnmarshalHostServiceNotifySendResponse
 	MarshalHostServiceCronRegisterRequest       = hostservice.MarshalHostServiceCronRegisterRequest

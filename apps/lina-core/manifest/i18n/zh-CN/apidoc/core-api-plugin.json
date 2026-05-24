@@ -226,13 +226,16 @@
                 "dc": "宿主确认后的 method 集合，不传则沿用插件声明的全部 methods"
               },
               "paths": {
-                "dc": "宿主确认后的逻辑路径集合，仅 storage service 使用；可声明单路径或目录前缀路径，空数组表示拒绝该 service 下全部路径申请"
+                "dc": "宿主确认后的逻辑路径集合，仅 storage 和 manifest service 使用；可声明单路径、目录前缀路径或服务支持的 glob，空数组表示拒绝该 service 下全部路径申请"
+              },
+              "keys": {
+                "dc": "宿主确认后的公开配置键集合，仅 hostConfig service 使用；空数组表示拒绝该 service 下全部 key 申请"
               },
               "resourceRefs": {
                 "dc": "宿主确认后的治理目标集合；network 使用 URL 模式，低优先级服务继续使用逻辑 resourceRef，空数组表示拒绝该 service 下全部资源申请"
               },
               "service": {
-                "dc": "宿主服务标识，如 storage、network、data"
+                "dc": "宿主服务标识，如 storage、network、data、hostConfig、manifest"
               },
               "tables": {
                 "dc": "宿主确认后的数据表集合，仅 data service 使用，空数组表示拒绝该 service 下全部表申请"
@@ -276,13 +279,16 @@
                 "dc": "该宿主服务下允许的方法集合"
               },
               "paths": {
-                "dc": "该宿主服务下允许访问的逻辑路径集合，仅 storage service 使用"
+                "dc": "该宿主服务下允许访问的逻辑路径集合，仅 storage 和 manifest service 使用"
+              },
+              "keys": {
+                "dc": "该宿主服务下允许访问的公开配置键集合，仅 hostConfig service 使用"
               },
               "resources": {
                 "dc": "该宿主服务下的治理目标集合；network 使用 URL 模式，低优先级服务继续使用 resourceRef"
               },
               "service": {
-                "dc": "宿主服务标识，如 runtime、cron、storage、network、data"
+                "dc": "宿主服务标识，如 runtime、cron、storage、network、data、config、hostConfig、manifest"
               },
               "tableItems": {
                 "dc": "该宿主服务下的数据表展示项，仅 data service 使用；当宿主可解析表级说明时会同时返回 comment"
@@ -1486,6 +1492,12 @@
               },
               "toPaths": {
                 "dc": "升级后目标存储路径集合"
+              },
+              "fromKeys": {
+                "dc": "升级前生效的公开宿主配置 key 集合"
+              },
+              "toKeys": {
+                "dc": "升级后目标公开宿主配置 key 集合"
               }
             }
           }

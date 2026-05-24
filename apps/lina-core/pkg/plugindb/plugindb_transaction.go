@@ -7,7 +7,7 @@ import (
 
 	"github.com/gogf/gf/v2/errors/gerror"
 
-	"lina-core/pkg/plugindb/shared"
+	plugindbplan "lina-core/pkg/plugindb/internal/plan"
 )
 
 // Table selects the single transaction table and returns one mutation builder.
@@ -31,7 +31,7 @@ func (q *TxQuery) WhereKey(key any) *TxQuery {
 	if q.err != nil {
 		return q
 	}
-	keyJSON, err := shared.MarshalValueJSON(key)
+	keyJSON, err := plugindbplan.MarshalValueJSON(key)
 	if err != nil {
 		q.err = err
 		q.tx.err = err
@@ -43,22 +43,22 @@ func (q *TxQuery) WhereKey(key any) *TxQuery {
 
 // Insert appends one insert mutation to the transaction.
 func (q *TxQuery) Insert(record map[string]any) (*MutationResult, error) {
-	return q.enqueueMutation(shared.DataMutationActionCreate, nil, record)
+	return q.enqueueMutation(plugindbplan.DataMutationActionCreate, nil, record)
 }
 
 // Update appends one update mutation to the transaction.
 func (q *TxQuery) Update(record map[string]any) (*MutationResult, error) {
-	return q.enqueueMutation(shared.DataMutationActionUpdate, q.keyJSON, record)
+	return q.enqueueMutation(plugindbplan.DataMutationActionUpdate, q.keyJSON, record)
 }
 
 // Delete appends one delete mutation to the transaction.
 func (q *TxQuery) Delete() (*MutationResult, error) {
-	return q.enqueueMutation(shared.DataMutationActionDelete, q.keyJSON, nil)
+	return q.enqueueMutation(plugindbplan.DataMutationActionDelete, q.keyJSON, nil)
 }
 
 // enqueueMutation validates and appends one structured mutation plan to the
 // surrounding single-table transaction builder.
-func (q *TxQuery) enqueueMutation(action shared.DataMutationAction, keyJSON []byte, record map[string]any) (*MutationResult, error) {
+func (q *TxQuery) enqueueMutation(action plugindbplan.DataMutationAction, keyJSON []byte, record map[string]any) (*MutationResult, error) {
 	if q.err != nil {
 		return nil, q.err
 	}
@@ -68,16 +68,16 @@ func (q *TxQuery) enqueueMutation(action shared.DataMutationAction, keyJSON []by
 	if !action.IsValid() {
 		return nil, gerror.Newf("plugindb mutation action is invalid: %s", action)
 	}
-	if (action == shared.DataMutationActionUpdate || action == shared.DataMutationActionDelete) && len(keyJSON) == 0 {
+	if (action == plugindbplan.DataMutationActionUpdate || action == plugindbplan.DataMutationActionDelete) && len(keyJSON) == 0 {
 		return nil, gerror.New("plugindb update/delete in transaction requires WhereKey")
 	}
-	recordJSON, err := shared.MarshalValueJSON(record)
+	recordJSON, err := plugindbplan.MarshalValueJSON(record)
 	if err != nil {
 		q.err = err
 		q.tx.err = err
 		return nil, err
 	}
-	q.tx.operations = append(q.tx.operations, &shared.DataMutationPlan{
+	q.tx.operations = append(q.tx.operations, &plugindbplan.DataMutationPlan{
 		Action:     action,
 		KeyJSON:    append([]byte(nil), keyJSON...),
 		RecordJSON: recordJSON,

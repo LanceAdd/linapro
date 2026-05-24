@@ -114,6 +114,16 @@ func (s *runtimeParamAuthTestHostServices) Config() plugincontract.ConfigService
 	return s.config
 }
 
+// HostConfig returns no host config service for auth runtime-parameter tests.
+func (s *runtimeParamAuthTestHostServices) HostConfig() plugincontract.HostConfigService {
+	return nil
+}
+
+// Manifest returns no manifest service for auth runtime-parameter tests.
+func (s *runtimeParamAuthTestHostServices) Manifest() plugincontract.ManifestService {
+	return nil
+}
+
 // I18n returns the runtime translation adapter used by auth hooks.
 func (s *runtimeParamAuthTestHostServices) I18n() plugincontract.I18nService {
 	if s == nil {

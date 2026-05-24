@@ -8,6 +8,7 @@ import (
 	"lina-core/internal/service/apidoc"
 	"lina-core/internal/service/auth"
 	"lina-core/internal/service/bizctx"
+	hostconfig "lina-core/internal/service/config"
 	"lina-core/internal/service/datascope"
 	i18nsvc "lina-core/internal/service/i18n"
 	"lina-core/internal/service/kvcache"
@@ -17,6 +18,8 @@ import (
 	"lina-core/pkg/pluginhost"
 	pluginserviceconfig "lina-core/pkg/pluginservice/config"
 	"lina-core/pkg/pluginservice/contract"
+	pluginservicehostconfig "lina-core/pkg/pluginservice/hostconfig"
+	pluginservicemanifest "lina-core/pkg/pluginservice/manifest"
 	pluginservicepluginlifecycle "lina-core/pkg/pluginservice/pluginlifecycle"
 	pluginservicepluginstate "lina-core/pkg/pluginservice/pluginstate"
 	pluginservicetenantfilter "lina-core/pkg/pluginservice/tenantfilter"
@@ -36,8 +39,10 @@ type directory struct {
 	auth         contract.AuthService   // auth exposes tenant token operations.
 	bizCtx       contract.BizCtxService // bizCtx exposes read-only request business context.
 	cache        kvcache.Service        // cache owns the shared runtime-selected KV backend.
-	config       contract.ConfigService // config exposes read-only host configuration.
-	i18n         contract.I18nService   // i18n exposes runtime translation lookups.
+	config       contract.ConfigServiceFactory
+	hostConfig   contract.HostConfigService
+	i18n         contract.I18nService // i18n exposes runtime translation lookups.
+	manifest     contract.ManifestServiceFactory
 	notify       contract.NotifyService // notify exposes host notification delivery.
 	pluginLife   contract.PluginLifecycleService
 	pluginState  contract.PluginStateService  // pluginState exposes plugin enablement lookups.
@@ -67,6 +72,7 @@ func New(
 	authSvc auth.Service,
 	authTokenIssuer auth.TenantTokenIssuer,
 	bizCtxSvc bizctx.Service,
+	configSvc hostconfig.Service,
 	scopeSvc datascope.Service,
 	i18nSvc i18nsvc.Service,
 	pluginStateSvc contract.PluginStateService,
@@ -89,8 +95,10 @@ func New(
 		auth:         newAuthAdapter(authTokenIssuer),
 		bizCtx:       bizCtxAdapter,
 		cache:        kvCacheSvc,
-		config:       pluginserviceconfig.New(),
+		config:       pluginserviceconfig.NewFactory("", ""),
+		hostConfig:   pluginservicehostconfig.New(configSvc),
 		i18n:         newI18nAdapter(i18nSvc),
+		manifest:     pluginservicemanifest.NewFactory(""),
 		notify:       newNotifyAdapter(notifySvc),
 		pluginLife:   pluginservicepluginlifecycle.New(pluginLifecycleRunner),
 		pluginState:  pluginservicepluginstate.New(pluginStateSvc),

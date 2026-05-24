@@ -4,16 +4,6 @@
 
 package guest
 
-// LockHostService exposes guest-side helpers for the governed distributed lock host service.
-type LockHostService interface {
-	// Acquire attempts to acquire one governed distributed lock.
-	Acquire(lockName string, leaseMillis int64) (*HostServiceLockAcquireResponse, error)
-	// Renew extends one governed distributed lock using the issued ticket.
-	Renew(lockName string, ticket string) (*HostServiceLockRenewResponse, error)
-	// Release releases one governed distributed lock using the issued ticket.
-	Release(lockName string, ticket string) error
-}
-
 // lockHostService is the default guest-side distributed lock host-service
 // client.
 type lockHostService struct{}

@@ -37,12 +37,18 @@ func (s *directory) Cache() contract.CacheService {
 	return nil
 }
 
-// Config returns the host static configuration adapter.
+// Config returns nil for the unscoped base directory because config reads
+// require a plugin-bound service view.
 func (s *directory) Config() contract.ConfigService {
+	return nil
+}
+
+// HostConfig returns the whitelisted public host config adapter.
+func (s *directory) HostConfig() contract.HostConfigService {
 	if s == nil {
 		return nil
 	}
-	return s.config
+	return s.hostConfig
 }
 
 // I18n returns the host runtime translation adapter.
@@ -51,6 +57,12 @@ func (s *directory) I18n() contract.I18nService {
 		return nil
 	}
 	return s.i18n
+}
+
+// Manifest returns nil for the unscoped base directory because manifest reads
+// require a plugin-bound service view.
+func (s *directory) Manifest() contract.ManifestService {
+	return nil
 }
 
 // Notify returns the host notification adapter.
@@ -141,12 +153,23 @@ func (s *scopedDirectory) Cache() contract.CacheService {
 	return newCacheAdapter(s.base.cache, s.base.bizCtx, s.pluginID)
 }
 
-// Config returns the delegated static configuration adapter.
+// Config returns the plugin-scoped static configuration adapter.
 func (s *scopedDirectory) Config() contract.ConfigService {
 	if s == nil || s.base == nil {
 		return nil
 	}
-	return s.base.Config()
+	if s.base.config == nil {
+		return nil
+	}
+	return s.base.config.ForPlugin(s.pluginID)
+}
+
+// HostConfig returns the delegated public host config adapter.
+func (s *scopedDirectory) HostConfig() contract.HostConfigService {
+	if s == nil || s.base == nil {
+		return nil
+	}
+	return s.base.HostConfig()
 }
 
 // I18n returns the delegated runtime translation adapter.
@@ -155,6 +178,17 @@ func (s *scopedDirectory) I18n() contract.I18nService {
 		return nil
 	}
 	return s.base.I18n()
+}
+
+// Manifest returns the plugin-scoped manifest resource adapter.
+func (s *scopedDirectory) Manifest() contract.ManifestService {
+	if s == nil || s.base == nil {
+		return nil
+	}
+	if s.base.manifest == nil {
+		return nil
+	}
+	return s.base.manifest.ForPlugin(s.pluginID)
 }
 
 // Notify returns the delegated notification adapter.

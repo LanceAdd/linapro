@@ -267,6 +267,8 @@ type ArtifactSpec struct {
 	APIDocI18NAssetCount int
 	// SQLAssetCount is the count of embedded SQL migration assets.
 	SQLAssetCount int
+	// ManifestResourceCount is the count of embedded manifest/config resources.
+	ManifestResourceCount int
 	// RouteCount is the count of declared bridge routes.
 	RouteCount int
 	// Manifest is the embedded plugin identity manifest.
@@ -281,6 +283,8 @@ type ArtifactSpec struct {
 	// the operator opts in at install time. The host executes these inside a
 	// single database transaction so any failure rolls back the entire load.
 	MockSQLAssets []*ArtifactSQLAsset
+	// ManifestResources holds embedded manifest/config resources from the active release.
+	ManifestResources []*ArtifactManifestResource
 	// HookSpecs holds the embedded hook handler declarations.
 	HookSpecs []*HookSpec
 	// LifecycleContracts holds the embedded lifecycle precondition declarations.
@@ -368,4 +372,15 @@ type ArtifactSQLAsset struct {
 	Key string `json:"key" yaml:"key"`
 	// Content is the raw SQL text.
 	Content string `json:"content" yaml:"content"`
+}
+
+// ArtifactManifestResource stores one embedded manifest/config resource.
+type ArtifactManifestResource struct {
+	// Path is the resource path using plugin source layout semantics, for
+	// example manifest/metadata.yaml or manifest/config/config.yaml.
+	Path string `json:"path" yaml:"path"`
+	// ContentBase64 is the base64-encoded resource content.
+	ContentBase64 string `json:"contentBase64" yaml:"contentBase64"`
+	// Content is the decoded resource content (not serialized).
+	Content []byte `json:"-" yaml:"-"`
 }

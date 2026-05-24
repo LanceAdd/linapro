@@ -3,6 +3,7 @@
 package runtime_test
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -250,6 +251,119 @@ func TestParseRuntimeArtifactLoadsRoutesAndBridgeSpec(t *testing.T) {
 	}
 	if len(manifest.HostServices) != 1 || manifest.HostServices[0].Service != pluginbridge.HostServiceRuntime {
 		t.Fatalf("expected runtime host service snapshot to be restored, got %#v", manifest.HostServices)
+	}
+}
+
+// TestParseRuntimeArtifactLoadsManifestResources verifies dynamic artifact
+// manifest/config resources are decoded and exposed on the active artifact view.
+func TestParseRuntimeArtifactLoadsManifestResources(t *testing.T) {
+	services := testutil.NewServices()
+	pluginDir := testutil.CreateTestRuntimePluginDir(
+		t,
+		"plugin-dev-dynamic-manifest-resources",
+		"Runtime Manifest Resource Plugin",
+		"v0.3.9",
+		nil,
+		nil,
+	)
+
+	artifactPath := filepath.Join(pluginDir, runtime.BuildArtifactRelativePath("plugin-dev-dynamic-manifest-resources"))
+	testutil.WriteRuntimeWasmArtifact(
+		t,
+		artifactPath,
+		&catalog.ArtifactManifest{
+			ID:      "plugin-dev-dynamic-manifest-resources",
+			Name:    "Runtime Manifest Resource Plugin",
+			Version: "v0.3.9",
+			Type:    catalog.TypeDynamic.String(),
+		},
+		&catalog.ArtifactSpec{
+			RuntimeKind:           pluginbridge.RuntimeKindWasm,
+			ABIVersion:            pluginbridge.SupportedABIVersion,
+			ManifestResourceCount: 3,
+			ManifestResources: []*catalog.ArtifactManifestResource{
+				{
+					Path:          "manifest/config/config.yaml",
+					ContentBase64: base64.StdEncoding.EncodeToString([]byte("feature:\n  enabled: true\n")),
+				},
+				{
+					Path:          "manifest/config/config.example.yaml",
+					ContentBase64: base64.StdEncoding.EncodeToString([]byte("feature:\n  enabled: false\n")),
+				},
+				{
+					Path:          "manifest/metadata.yaml",
+					ContentBase64: base64.StdEncoding.EncodeToString([]byte("title: demo\n")),
+				},
+			},
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	artifact, err := services.Runtime.ParseRuntimeWasmArtifact(artifactPath)
+	if err != nil {
+		t.Fatalf("expected runtime artifact with manifest resources to parse, got error: %v", err)
+	}
+	if artifact.ManifestResourceCount != 3 || len(artifact.ManifestResources) != 3 {
+		t.Fatalf("expected three manifest resources, got count=%d resources=%#v", artifact.ManifestResourceCount, artifact.ManifestResources)
+	}
+	if string(artifact.ManifestResources[0].Content) != "feature:\n  enabled: true\n" {
+		t.Fatalf("expected decoded config content, got %q", string(artifact.ManifestResources[0].Content))
+	}
+}
+
+// TestParseRuntimeArtifactRejectsInvalidManifestResourcePath verifies artifact
+// resources cannot smuggle SQL, i18n, absolute, or traversal paths.
+func TestParseRuntimeArtifactRejectsInvalidManifestResourcePath(t *testing.T) {
+	services := testutil.NewServices()
+	pluginDir := testutil.CreateTestRuntimePluginDir(
+		t,
+		"plugin-dev-dynamic-manifest-invalid",
+		"Runtime Manifest Invalid Plugin",
+		"v0.3.10",
+		nil,
+		nil,
+	)
+
+	artifactPath := filepath.Join(pluginDir, runtime.BuildArtifactRelativePath("plugin-dev-dynamic-manifest-invalid"))
+	testutil.WriteRuntimeWasmArtifact(
+		t,
+		artifactPath,
+		&catalog.ArtifactManifest{
+			ID:      "plugin-dev-dynamic-manifest-invalid",
+			Name:    "Runtime Manifest Invalid Plugin",
+			Version: "v0.3.10",
+			Type:    catalog.TypeDynamic.String(),
+		},
+		&catalog.ArtifactSpec{
+			RuntimeKind:           pluginbridge.RuntimeKindWasm,
+			ABIVersion:            pluginbridge.SupportedABIVersion,
+			ManifestResourceCount: 1,
+			ManifestResources: []*catalog.ArtifactManifestResource{
+				{
+					Path:          "manifest/sql/001-invalid.yaml",
+					ContentBase64: base64.StdEncoding.EncodeToString([]byte("SELECT 1;\n")),
+				},
+			},
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	_, err := services.Runtime.ParseRuntimeWasmArtifact(artifactPath)
+	if err == nil {
+		t.Fatal("expected invalid manifest resource path to be rejected")
+	}
+	if !strings.Contains(err.Error(), "dedicated pipeline") {
+		t.Fatalf("expected dedicated pipeline path error, got %v", err)
 	}
 }
 

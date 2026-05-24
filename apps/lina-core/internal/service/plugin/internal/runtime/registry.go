@@ -18,8 +18,8 @@ import (
 	"lina-core/internal/model/entity"
 	"lina-core/internal/service/plugin/internal/catalog"
 	"lina-core/pkg/logger"
+	bridgehostservice "lina-core/pkg/pluginbridge"
 	bridgecontract "lina-core/pkg/pluginbridge/contract"
-	bridgehostservice "lina-core/pkg/pluginbridge/hostservice"
 )
 
 // PluginItem is a flattened, display-ready projection of one plugin entry combining

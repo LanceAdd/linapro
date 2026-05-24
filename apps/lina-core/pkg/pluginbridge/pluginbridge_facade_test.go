@@ -1,5 +1,5 @@
 // This file verifies that the root pluginbridge facade remains behaviorally
-// identical to the focused subcomponents it forwards to.
+// identical to the internal protocol components it forwards to.
 
 package pluginbridge
 
@@ -9,9 +9,9 @@ import (
 	"reflect"
 	"testing"
 
-	"lina-core/pkg/pluginbridge/artifact"
-	"lina-core/pkg/pluginbridge/codec"
-	"lina-core/pkg/pluginbridge/hostservice"
+	"lina-core/pkg/pluginbridge/internal/artifact"
+	"lina-core/pkg/pluginbridge/internal/codec"
+	"lina-core/pkg/pluginbridge/internal/hostservice"
 )
 
 // TestFacadeRequestEnvelopeMatchesCodec verifies root request envelope helpers

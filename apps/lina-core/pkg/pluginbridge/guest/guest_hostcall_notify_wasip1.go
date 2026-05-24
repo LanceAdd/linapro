@@ -4,12 +4,6 @@
 
 package guest
 
-// NotifyHostService exposes guest-side helpers for the governed unified notify host service.
-type NotifyHostService interface {
-	// Send sends one governed notification through the authorized channel.
-	Send(channelKey string, request *HostServiceNotifySendRequest) (*HostServiceNotifySendResponse, error)
-}
-
 // notifyHostService is the default guest-side notify host-service client.
 type notifyHostService struct{}
 

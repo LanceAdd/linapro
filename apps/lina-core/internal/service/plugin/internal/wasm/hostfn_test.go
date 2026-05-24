@@ -99,7 +99,7 @@ func TestHostCallContextHasHostServiceAccess(t *testing.T) {
 }
 
 // TestHostCallContextDefaultsConfigMethods verifies config declarations with
-// omitted methods authorize the complete read-only config method set.
+// omitted methods authorize only the get action.
 func TestHostCallContextDefaultsConfigMethods(t *testing.T) {
 	hcc := &hostCallContext{
 		pluginID: "test-plugin",
@@ -112,11 +112,52 @@ func TestHostCallContextDefaultsConfigMethods(t *testing.T) {
 	if !hcc.hasHostServiceAccess(pluginbridge.HostServiceConfig, pluginbridge.HostServiceMethodConfigGet, "", "") {
 		t.Error("expected config get to be authorized when methods are omitted")
 	}
-	if !hcc.hasHostServiceAccess(pluginbridge.HostServiceConfig, pluginbridge.HostServiceMethodConfigExists, "", "") {
-		t.Error("expected config exists to be authorized when methods are omitted")
+	if hcc.hasHostServiceAccess(pluginbridge.HostServiceConfig, pluginbridge.HostServiceMethodConfigExists, "", "") {
+		t.Error("expected config exists helper method to be unauthorized")
 	}
 	if hcc.hasHostServiceAccess(pluginbridge.HostServiceConfig, "set", "", "") {
 		t.Error("expected unsupported config method to remain unauthorized")
+	}
+}
+
+// TestHostCallContextHasHostConfigKeyAccess verifies hostConfig authorization
+// uses the resourceRef key from the request envelope.
+func TestHostCallContextHasHostConfigKeyAccess(t *testing.T) {
+	hcc := &hostCallContext{
+		pluginID: "test-plugin",
+		hostServices: []*pluginbridge.HostServiceSpec{{
+			Service: pluginbridge.HostServiceHostConfig,
+			Methods: []string{pluginbridge.HostServiceMethodHostConfigGet},
+			Keys:    []string{"workspace.basePath"},
+		}},
+	}
+	if !hcc.hasHostServiceAccess(pluginbridge.HostServiceHostConfig, pluginbridge.HostServiceMethodHostConfigGet, "workspace.basePath", "") {
+		t.Error("expected authorized hostConfig key to be allowed")
+	}
+	if hcc.hasHostServiceAccess(pluginbridge.HostServiceHostConfig, pluginbridge.HostServiceMethodHostConfigGet, "database.default.link", "") {
+		t.Error("expected unauthorized hostConfig key to be denied")
+	}
+}
+
+// TestHostCallContextHasManifestPathAccess verifies manifest authorization
+// accepts exact and globbed manifest-relative paths.
+func TestHostCallContextHasManifestPathAccess(t *testing.T) {
+	hcc := &hostCallContext{
+		pluginID: "test-plugin",
+		hostServices: []*pluginbridge.HostServiceSpec{{
+			Service: pluginbridge.HostServiceManifest,
+			Methods: []string{pluginbridge.HostServiceMethodManifestGet},
+			Paths:   []string{"metadata.yaml", "resources/*.yaml"},
+		}},
+	}
+	if !hcc.hasHostServiceAccess(pluginbridge.HostServiceManifest, pluginbridge.HostServiceMethodManifestGet, "metadata.yaml", "") {
+		t.Error("expected exact manifest path to be allowed")
+	}
+	if !hcc.hasHostServiceAccess(pluginbridge.HostServiceManifest, pluginbridge.HostServiceMethodManifestGet, "resources/policy.yaml", "") {
+		t.Error("expected globbed manifest path to be allowed")
+	}
+	if hcc.hasHostServiceAccess(pluginbridge.HostServiceManifest, pluginbridge.HostServiceMethodManifestGet, "config/config.yaml", "") {
+		t.Error("expected dedicated config manifest path to be denied")
 	}
 }
 

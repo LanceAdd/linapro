@@ -17,8 +17,8 @@ import (
 	"github.com/gogf/gf/v2/errors/gerror"
 
 	"lina-core/pkg/logger"
-	bridgehostcall "lina-core/pkg/pluginbridge/hostcall"
-	bridgehostservice "lina-core/pkg/pluginbridge/hostservice"
+	bridgehostcall "lina-core/pkg/pluginbridge"
+	bridgehostservice "lina-core/pkg/pluginbridge"
 )
 
 // Default timeout and size limits for governed outbound network requests.

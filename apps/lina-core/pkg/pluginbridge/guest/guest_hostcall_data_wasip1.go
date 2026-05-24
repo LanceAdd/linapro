@@ -9,27 +9,6 @@ import (
 	"encoding/json"
 )
 
-// DataHostService exposes the compatibility guest-side helpers for the governed
-// structured data host service. New guest code should prefer plugindb.
-type DataHostService interface {
-	// List executes one governed structured data list request.
-	List(table string, filters map[string]string, pageNum int32, pageSize int32) (*DataListResult, error)
-	// ListRequest executes one governed structured data list request with the raw host-service request payload.
-	ListRequest(table string, request *HostServiceDataListRequest) (*HostServiceDataListResponse, error)
-	// Get reads one governed record by key from an authorized table.
-	Get(table string, key any) (map[string]any, bool, error)
-	// GetRequest executes one governed data get request with the raw host-service request payload.
-	GetRequest(table string, request *HostServiceDataGetRequest) (*DataGetResult, error)
-	// Create creates one governed record in an authorized table.
-	Create(table string, record map[string]any) (*DataMutationResult, error)
-	// Update updates one governed record in an authorized table.
-	Update(table string, key any, record map[string]any) (*DataMutationResult, error)
-	// Delete deletes one governed record in an authorized table.
-	Delete(table string, key any) (*DataMutationResult, error)
-	// Transaction executes one governed structured data transaction.
-	Transaction(table string, operations []*DataTransactionInput) (*DataTransactionResult, error)
-}
-
 // dataHostService is the default guest-side structured data host-service
 // client.
 type dataHostService struct{}
@@ -37,50 +16,6 @@ type dataHostService struct{}
 // defaultDataHostService stores the singleton structured data host-service
 // client used by package-level helpers.
 var defaultDataHostService DataHostService = &dataHostService{}
-
-// DataListResult is the decoded guest-side result of one data list request.
-type DataListResult struct {
-	// Records is the ordered JSON-decoded result set.
-	Records []map[string]any
-	// Total is the total number of matching rows before pagination.
-	Total int32
-}
-
-// DataMutationResult is the decoded guest-side result of one data mutation.
-type DataMutationResult struct {
-	// AffectedRows is the number of rows affected by the mutation.
-	AffectedRows int64
-	// Key is the JSON-decoded resource key returned by the host when available.
-	Key any
-	// Record is the optional JSON-decoded record snapshot returned by the host.
-	Record map[string]any
-}
-
-// DataTransactionInput describes one guest-side transaction step.
-type DataTransactionInput struct {
-	// Method is one structured mutation method such as create/update/delete.
-	Method string
-	// Key is the optional resource key used by update/delete.
-	Key any
-	// Record is the optional input document used by create/update.
-	Record map[string]any
-}
-
-// DataTransactionResult is the decoded guest-side result of one data transaction.
-type DataTransactionResult struct {
-	// Results is the ordered list of per-step mutation results.
-	Results []*DataMutationResult
-	// AffectedRows is the aggregate affected row count across all steps.
-	AffectedRows int64
-}
-
-// DataGetResult is the decoded guest-side result of one data get request.
-type DataGetResult struct {
-	// Found reports whether the requested record exists.
-	Found bool
-	// Record is the optional JSON-decoded record snapshot returned by the host.
-	Record map[string]any
-}
 
 // Data returns the compatibility structured data host service guest client.
 // New guest code should prefer plugindb.Open().

@@ -5,7 +5,7 @@ package plugindb
 import (
 	"testing"
 
-	"lina-core/pkg/plugindb/shared"
+	plugindbplan "lina-core/pkg/plugindb/internal/plan"
 )
 
 // TestTransactionRejectsMultipleTables verifies the transaction builder keeps
@@ -39,10 +39,10 @@ func TestQueryBuilderBuildsTypedPlan(t *testing.T) {
 	if len(query.plan.Filters) != 3 {
 		t.Fatalf("unexpected filters: %#v", query.plan.Filters)
 	}
-	if query.plan.Filters[1].Operator != shared.DataFilterOperatorIN {
+	if query.plan.Filters[1].Operator != plugindbplan.DataFilterOperatorIN {
 		t.Fatalf("unexpected filter operator: %#v", query.plan.Filters[1])
 	}
-	if len(query.plan.Orders) != 1 || query.plan.Orders[0].Direction != shared.DataOrderDirectionDESC {
+	if len(query.plan.Orders) != 1 || query.plan.Orders[0].Direction != plugindbplan.DataOrderDirectionDESC {
 		t.Fatalf("unexpected orders: %#v", query.plan.Orders)
 	}
 	if query.plan.Page == nil || query.plan.Page.PageNum != 2 || query.plan.Page.PageSize != 20 {

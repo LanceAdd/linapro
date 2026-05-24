@@ -14,7 +14,7 @@ import (
 
 	"lina-core/internal/service/plugin/internal/catalog"
 	"lina-core/pkg/pluginbridge"
-	"lina-core/pkg/plugindb/shared"
+	"lina-core/pkg/plugindb"
 )
 
 // Default pagination limits for governed list operations.
@@ -64,12 +64,12 @@ func ExecuteList(
 		return nil, err
 	}
 
-	plan, err := decodeDataListPlan(table, request)
+	requestPlan, err := decodeDataListPlan(table, request)
 	if err != nil {
 		return nil, err
 	}
 	model := buildResourceModel(db, ctx, resource)
-	model, err = applyPlanFilters(model, resource, plan.Filters)
+	model, err = applyPlanFilters(model, resource, requestPlan.Filters)
 	if err != nil {
 		return nil, err
 	}
@@ -86,18 +86,18 @@ func ExecuteList(
 	response := &pluginbridge.HostServiceDataListResponse{
 		Total: int32(total),
 	}
-	if plan.Action == shared.DataPlanActionCount {
+	if requestPlan.Action == plugindb.DataPlanActionCount {
 		return response, nil
 	}
-	fieldArgs, err := buildPlanFieldArgs(resource, plan.Fields)
+	fieldArgs, err := buildPlanFieldArgs(resource, requestPlan.Fields)
 	if err != nil {
 		return nil, err
 	}
-	orderBy, err := buildPlanOrderBy(resource, plan.Orders)
+	orderBy, err := buildPlanOrderBy(resource, requestPlan.Orders)
 	if err != nil {
 		return nil, err
 	}
-	page := plan.Page
+	page := requestPlan.Page
 	records, err := model.
 		Fields(fieldArgs...).
 		Page(int(page.PageNum), int(page.PageSize)).
@@ -111,7 +111,7 @@ func ExecuteList(
 		if record == nil {
 			continue
 		}
-		recordJSON, marshalErr := json.Marshal(buildResourceRecordWithSelection(record.Map(), resource, plan.Fields))
+		recordJSON, marshalErr := json.Marshal(buildResourceRecordWithSelection(record.Map(), resource, requestPlan.Fields))
 		if marshalErr != nil {
 			return nil, marshalErr
 		}
@@ -139,11 +139,11 @@ func ExecuteGet(
 	if err := validateExecutionAccess(execCtx, resource, pluginbridge.HostServiceMethodDataGet); err != nil {
 		return nil, err
 	}
-	plan, err := decodeDataGetPlan(table, request)
+	requestPlan, err := decodeDataGetPlan(table, request)
 	if err != nil {
 		return nil, err
 	}
-	keyValue, err := decodeJSONScalar(plan.KeyJSON)
+	keyValue, err := decodeJSONScalar(requestPlan.KeyJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +161,7 @@ func ExecuteGet(
 		return nil, err
 	}
 
-	fieldArgs, err := buildPlanFieldArgs(resource, plan.Fields)
+	fieldArgs, err := buildPlanFieldArgs(resource, requestPlan.Fields)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func ExecuteGet(
 	if len(records) == 0 {
 		return &pluginbridge.HostServiceDataGetResponse{Found: false}, nil
 	}
-	recordJSON, err := json.Marshal(buildResourceRecordWithSelection(records[0].Map(), resource, plan.Fields))
+	recordJSON, err := json.Marshal(buildResourceRecordWithSelection(records[0].Map(), resource, requestPlan.Fields))
 	if err != nil {
 		return nil, err
 	}

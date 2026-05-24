@@ -6,8 +6,8 @@ import (
 	"context"
 
 	"lina-core/internal/service/plugin/internal/datahost"
-	bridgehostcall "lina-core/pkg/pluginbridge/hostcall"
-	bridgehostservice "lina-core/pkg/pluginbridge/hostservice"
+	bridgehostcall "lina-core/pkg/pluginbridge"
+	bridgehostservice "lina-core/pkg/pluginbridge"
 )
 
 // dispatchDataHostService routes governed data service methods to the structured data host layer.

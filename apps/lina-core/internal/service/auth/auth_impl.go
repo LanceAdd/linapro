@@ -7,9 +7,14 @@ package auth
 
 import (
 	"context"
+	"strings"
+	"time"
+
 	"lina-core/internal/dao"
+	"lina-core/internal/model"
 	"lina-core/internal/model/do"
 	"lina-core/internal/model/entity"
+	"lina-core/internal/service/bizctx"
 	"lina-core/internal/service/datascope"
 	pluginsvc "lina-core/internal/service/plugin"
 	"lina-core/internal/service/session"
@@ -17,7 +22,6 @@ import (
 	"lina-core/pkg/logger"
 	"lina-core/pkg/pluginhost"
 	pkgtenantcap "lina-core/pkg/tenantcap"
-	"time"
 
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
@@ -218,6 +222,60 @@ func (s *serviceImpl) ReissueTenantTokenFromBearer(ctx context.Context, tokenStr
 		CurrentClaims: claims,
 		TenantID:      tenantID,
 	})
+}
+
+// IssueImpersonationToken signs and registers a host-owned impersonation token.
+func (s *serviceImpl) IssueImpersonationToken(ctx context.Context, in ImpersonationTokenIssueInput) (*ImpersonationTokenOutput, error) {
+	if in.ActingUserID <= 0 || in.TenantID <= 0 {
+		return nil, bizerr.NewCode(CodeAuthTokenInvalid)
+	}
+
+	var user *entity.SysUser
+	if err := dao.SysUser.Ctx(ctx).
+		Where(do.SysUser{Id: in.ActingUserID}).
+		Scan(&user); err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, bizerr.NewCode(CodeAuthTokenInvalid)
+	}
+	if user.Status == statusDisabled {
+		return nil, bizerr.NewCode(CodeAuthUserDisabled)
+	}
+
+	tokenID := guid.S()
+	accessToken, err := s.signToken(ctx, user, in.TenantID, tokenID, tokenKindAccess, true, in.ActingUserID)
+	if err != nil {
+		return nil, err
+	}
+	if err = s.createImpersonationSession(ctx, user, in.TenantID, tokenID, in.ActingUserID); err != nil {
+		return nil, err
+	}
+	return &ImpersonationTokenOutput{
+		AccessToken:  accessToken,
+		TokenID:      tokenID,
+		TenantID:     in.TenantID,
+		ActingUserID: in.ActingUserID,
+	}, nil
+}
+
+// RevokeImpersonationToken validates and revokes one host impersonation token.
+func (s *serviceImpl) RevokeImpersonationToken(ctx context.Context, tokenString string, tenantID int) error {
+	claims, err := s.ParseToken(ctx, strings.TrimSpace(strings.TrimPrefix(tokenString, "Bearer ")))
+	if err != nil {
+		return err
+	}
+	if claims == nil || !claims.IsImpersonation || claims.TokenId == "" || claims.ActingUserId <= 0 {
+		return bizerr.NewCode(CodeAuthTokenInvalid)
+	}
+	if tenantID > 0 && claims.TenantId != tenantID {
+		return bizerr.NewCode(CodeAuthTokenInvalid)
+	}
+	expiresAt := time.Time{}
+	if claims.ExpiresAt != nil {
+		expiresAt = claims.ExpiresAt.Time
+	}
+	return s.revokeSession(ctx, claims.TokenId, expiresAt)
 }
 
 // ParseToken parses and validates JWT token, returns claims.
@@ -585,6 +643,40 @@ func (s *serviceImpl) validateSwitchTenant(ctx context.Context, userID int, tena
 // createSession persists a tenant-bound online-session row.
 func (s *serviceImpl) createSession(ctx context.Context, user *entity.SysUser, tenantID int, tokenID string) error {
 	tenantScopedCtx := datascope.WithTenantScope(ctx, tenantID)
+	return s.createSessionWithPrimeContext(ctx, tenantScopedCtx, user, tenantID, tokenID)
+}
+
+// createImpersonationSession persists an impersonation session and primes role
+// access with platform-admin grants while keeping target tenant cache scope.
+func (s *serviceImpl) createImpersonationSession(
+	ctx context.Context,
+	user *entity.SysUser,
+	tenantID int,
+	tokenID string,
+	actingUserID int,
+) error {
+	impersonationCtx := context.WithValue(datascope.WithTenantScope(ctx, tenantID), bizctx.ContextKey, &model.Context{
+		TokenId:         tokenID,
+		UserId:          user.Id,
+		Username:        user.Username,
+		Status:          user.Status,
+		TenantId:        tenantID,
+		ActingAsTenant:  true,
+		ActingUserId:    actingUserID,
+		IsImpersonation: true,
+	})
+	return s.createSessionWithPrimeContext(impersonationCtx, impersonationCtx, user, tenantID, tokenID)
+}
+
+// createSessionWithPrimeContext persists a tenant-bound online-session row and
+// primes role access through the provided permission context.
+func (s *serviceImpl) createSessionWithPrimeContext(
+	ctx context.Context,
+	primeCtx context.Context,
+	user *entity.SysUser,
+	tenantID int,
+	tokenID string,
+) error {
 	var ip, browser, osName string
 	if r := g.RequestFromCtx(ctx); r != nil {
 		ip = r.GetClientIp()
@@ -593,7 +685,7 @@ func (s *serviceImpl) createSession(ctx context.Context, user *entity.SysUser, t
 		browser = browserName + " " + browserVersion
 		osName = ua.OS()
 	}
-	deptName := s.getUserDeptName(tenantScopedCtx, user.Id)
+	deptName := s.getUserDeptName(ctx, user.Id)
 	if ttlSetter, ok := s.sessionStore.(interface{ SetDefaultTTL(time.Duration) }); ok {
 		timeout, err := s.configSvc.GetSessionTimeout(ctx)
 		if err != nil {
@@ -618,6 +710,6 @@ func (s *serviceImpl) createSession(ctx context.Context, user *entity.SysUser, t
 	if s.roleSvc == nil {
 		return nil
 	}
-	_, err := s.roleSvc.PrimeTokenAccessContext(tenantScopedCtx, tokenID, user.Id)
+	_, err := s.roleSvc.PrimeTokenAccessContext(primeCtx, tokenID, user.Id)
 	return err
 }

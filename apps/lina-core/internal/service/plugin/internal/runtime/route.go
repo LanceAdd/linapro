@@ -25,7 +25,7 @@ import (
 	"lina-core/pkg/authtoken"
 	"lina-core/pkg/bizerr"
 	"lina-core/pkg/logger"
-	bridgecodec "lina-core/pkg/pluginbridge/codec"
+	bridgecodec "lina-core/pkg/pluginbridge"
 	bridgecontract "lina-core/pkg/pluginbridge/contract"
 	"lina-core/pkg/pluginhost"
 )

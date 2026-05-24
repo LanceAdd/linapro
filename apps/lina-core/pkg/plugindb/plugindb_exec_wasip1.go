@@ -10,14 +10,14 @@ import (
 
 	"github.com/gogf/gf/v2/errors/gerror"
 
+	bridgehostservice "lina-core/pkg/pluginbridge"
 	bridgeguest "lina-core/pkg/pluginbridge/guest"
-	bridgehostservice "lina-core/pkg/pluginbridge/hostservice"
-	"lina-core/pkg/plugindb/shared"
+	plugindbplan "lina-core/pkg/plugindb/internal/plan"
 )
 
 // ensureExecutionReady validates the accumulated query plan before one governed
 // guest execution call.
-func (q *Query) ensureExecutionReady(action shared.DataPlanAction) error {
+func (q *Query) ensureExecutionReady(action plugindbplan.DataPlanAction) error {
 	if q == nil {
 		return gerror.New("plugindb query is nil")
 	}
@@ -28,17 +28,17 @@ func (q *Query) ensureExecutionReady(action shared.DataPlanAction) error {
 		return gerror.New("plugindb table cannot be empty")
 	}
 	for _, filter := range q.plan.Filters {
-		if err := shared.ValidateDataFilter(filter); err != nil {
+		if err := plugindbplan.ValidateDataFilter(filter); err != nil {
 			return err
 		}
 	}
 	for _, order := range q.plan.Orders {
-		if err := shared.ValidateDataOrder(order); err != nil {
+		if err := plugindbplan.ValidateDataOrder(order); err != nil {
 			return err
 		}
 	}
 	q.plan.Action = action
-	if err := shared.ValidateDataQueryPlan(q.plan); err != nil {
+	if err := plugindbplan.ValidateDataQueryPlan(q.plan); err != nil {
 		return err
 	}
 	return nil
@@ -46,12 +46,12 @@ func (q *Query) ensureExecutionReady(action shared.DataPlanAction) error {
 
 // One executes one governed single-record lookup.
 func (q *Query) One() (map[string]any, bool, error) {
-	if err := q.ensureExecutionReady(shared.DataPlanActionGet); err != nil {
+	if err := q.ensureExecutionReady(plugindbplan.DataPlanActionGet); err != nil {
 		return nil, false, err
 	}
 	dataSvc := bridgeguest.Data()
 	if len(q.plan.KeyJSON) > 0 {
-		planJSON, err := shared.MarshalQueryPlanJSON(q.plan)
+		planJSON, err := plugindbplan.MarshalQueryPlanJSON(q.plan)
 		if err != nil {
 			return nil, false, err
 		}
@@ -76,10 +76,10 @@ func (q *Query) One() (map[string]any, bool, error) {
 
 // All executes one governed paged list query.
 func (q *Query) All() ([]map[string]any, int32, error) {
-	if err := q.ensureExecutionReady(shared.DataPlanActionList); err != nil {
+	if err := q.ensureExecutionReady(plugindbplan.DataPlanActionList); err != nil {
 		return nil, 0, err
 	}
-	planJSON, err := shared.MarshalQueryPlanJSON(q.plan)
+	planJSON, err := plugindbplan.MarshalQueryPlanJSON(q.plan)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -104,10 +104,10 @@ func (q *Query) Count() (int32, error) {
 	if q == nil {
 		return 0, gerror.New("plugindb query is nil")
 	}
-	if err := q.ensureExecutionReady(shared.DataPlanActionCount); err != nil {
+	if err := q.ensureExecutionReady(plugindbplan.DataPlanActionCount); err != nil {
 		return 0, err
 	}
-	planJSON, err := shared.MarshalQueryPlanJSON(q.plan)
+	planJSON, err := plugindbplan.MarshalQueryPlanJSON(q.plan)
 	if err != nil {
 		return 0, err
 	}
@@ -125,7 +125,7 @@ func (q *Query) Count() (int32, error) {
 
 // Insert executes one governed insert mutation.
 func (q *Query) Insert(record map[string]any) (*MutationResult, error) {
-	if err := q.ensureExecutionReady(shared.DataPlanActionCreate); err != nil {
+	if err := q.ensureExecutionReady(plugindbplan.DataPlanActionCreate); err != nil {
 		return nil, err
 	}
 	result, err := bridgeguest.Data().Create(q.table, record)
@@ -137,13 +137,13 @@ func (q *Query) Insert(record map[string]any) (*MutationResult, error) {
 
 // Update executes one governed update mutation.
 func (q *Query) Update(record map[string]any) (*MutationResult, error) {
-	if err := q.ensureExecutionReady(shared.DataPlanActionUpdate); err != nil {
+	if err := q.ensureExecutionReady(plugindbplan.DataPlanActionUpdate); err != nil {
 		return nil, err
 	}
 	if len(q.plan.KeyJSON) == 0 {
 		return nil, gerror.New("plugindb update requires WhereKey")
 	}
-	key, err := shared.UnmarshalValueJSON(q.plan.KeyJSON)
+	key, err := plugindbplan.UnmarshalValueJSON(q.plan.KeyJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -156,13 +156,13 @@ func (q *Query) Update(record map[string]any) (*MutationResult, error) {
 
 // Delete executes one governed delete mutation.
 func (q *Query) Delete() (*MutationResult, error) {
-	if err := q.ensureExecutionReady(shared.DataPlanActionDelete); err != nil {
+	if err := q.ensureExecutionReady(plugindbplan.DataPlanActionDelete); err != nil {
 		return nil, err
 	}
 	if len(q.plan.KeyJSON) == 0 {
 		return nil, gerror.New("plugindb delete requires WhereKey")
 	}
-	key, err := shared.UnmarshalValueJSON(q.plan.KeyJSON)
+	key, err := plugindbplan.UnmarshalValueJSON(q.plan.KeyJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -193,11 +193,11 @@ func (db *DB) Transaction(fn func(tx *Tx) error) error {
 		if operation == nil {
 			continue
 		}
-		key, err := shared.UnmarshalValueJSON(operation.KeyJSON)
+		key, err := plugindbplan.UnmarshalValueJSON(operation.KeyJSON)
 		if err != nil {
 			return err
 		}
-		recordValue, err := shared.UnmarshalValueJSON(operation.RecordJSON)
+		recordValue, err := plugindbplan.UnmarshalValueJSON(operation.RecordJSON)
 		if err != nil {
 			return err
 		}

@@ -7,14 +7,14 @@ import (
 
 	"github.com/gogf/gf/v2/errors/gerror"
 
-	"lina-core/pkg/plugindb/shared"
+	plugindbplan "lina-core/pkg/plugindb/internal/plan"
 )
 
 // Table starts one single-table governed query builder.
 func (db *DB) Table(table string) *Query {
 	return &Query{
 		table: strings.TrimSpace(table),
-		plan:  &shared.DataQueryPlan{Table: strings.TrimSpace(table)},
+		plan:  &plugindbplan.DataQueryPlan{Table: strings.TrimSpace(table)},
 	}
 }
 
@@ -34,8 +34,8 @@ func (q *Query) Fields(fields ...string) *Query {
 	return q
 }
 
-// Where appends one typed filter clause.
-func (q *Query) Where(field string, operator shared.DataFilterOperator, value any) *Query {
+// where appends one typed filter clause.
+func (q *Query) where(field string, operator plugindbplan.DataFilterOperator, value any) *Query {
 	if q.err != nil {
 		return q
 	}
@@ -49,16 +49,16 @@ func (q *Query) Where(field string, operator shared.DataFilterOperator, value an
 		return q
 	}
 	var (
-		filter *shared.DataFilter
+		filter *plugindbplan.DataFilter
 		err    error
 	)
 	switch operator {
-	case shared.DataFilterOperatorEQ:
-		filter, err = shared.NewEQFilter(normalizedField, value)
-	case shared.DataFilterOperatorIN:
-		filter, err = shared.NewINFilter(normalizedField, value)
-	case shared.DataFilterOperatorLike:
-		filter, err = shared.NewLikeFilter(normalizedField, value)
+	case plugindbplan.DataFilterOperatorEQ:
+		filter, err = plugindbplan.NewEQFilter(normalizedField, value)
+	case plugindbplan.DataFilterOperatorIN:
+		filter, err = plugindbplan.NewINFilter(normalizedField, value)
+	case plugindbplan.DataFilterOperatorLike:
+		filter, err = plugindbplan.NewLikeFilter(normalizedField, value)
 	default:
 		err = gerror.Newf("plugindb where operator is unsupported: %s", operator)
 	}
@@ -72,17 +72,17 @@ func (q *Query) Where(field string, operator shared.DataFilterOperator, value an
 
 // WhereEq appends one equality filter.
 func (q *Query) WhereEq(field string, value any) *Query {
-	return q.Where(field, shared.DataFilterOperatorEQ, value)
+	return q.where(field, plugindbplan.DataFilterOperatorEQ, value)
 }
 
 // WhereIn appends one list-membership filter.
 func (q *Query) WhereIn(field string, values any) *Query {
-	return q.Where(field, shared.DataFilterOperatorIN, values)
+	return q.where(field, plugindbplan.DataFilterOperatorIN, values)
 }
 
 // WhereLike appends one wildcard filter.
 func (q *Query) WhereLike(field string, value any) *Query {
-	return q.Where(field, shared.DataFilterOperatorLike, value)
+	return q.where(field, plugindbplan.DataFilterOperatorLike, value)
 }
 
 // WhereKey sets the key used by get/update/delete operations.
@@ -90,7 +90,7 @@ func (q *Query) WhereKey(key any) *Query {
 	if q.err != nil {
 		return q
 	}
-	keyJSON, err := shared.MarshalValueJSON(key)
+	keyJSON, err := plugindbplan.MarshalValueJSON(key)
 	if err != nil {
 		q.err = err
 		return q
@@ -99,8 +99,8 @@ func (q *Query) WhereKey(key any) *Query {
 	return q
 }
 
-// Order appends one typed order clause.
-func (q *Query) Order(field string, direction shared.DataOrderDirection) *Query {
+// order appends one typed order clause.
+func (q *Query) order(field string, direction plugindbplan.DataOrderDirection) *Query {
 	if q.err != nil {
 		return q
 	}
@@ -113,18 +113,18 @@ func (q *Query) Order(field string, direction shared.DataOrderDirection) *Query 
 		q.err = gerror.Newf("plugindb order direction is invalid: %s", direction)
 		return q
 	}
-	q.plan.Orders = append(q.plan.Orders, &shared.DataOrder{Field: normalizedField, Direction: direction})
+	q.plan.Orders = append(q.plan.Orders, &plugindbplan.DataOrder{Field: normalizedField, Direction: direction})
 	return q
 }
 
 // OrderAsc appends one ascending order clause.
 func (q *Query) OrderAsc(field string) *Query {
-	return q.Order(field, shared.DataOrderDirectionASC)
+	return q.order(field, plugindbplan.DataOrderDirectionASC)
 }
 
 // OrderDesc appends one descending order clause.
 func (q *Query) OrderDesc(field string) *Query {
-	return q.Order(field, shared.DataOrderDirectionDESC)
+	return q.order(field, plugindbplan.DataOrderDirectionDESC)
 }
 
 // Page applies one paging window.
@@ -132,6 +132,6 @@ func (q *Query) Page(pageNum int32, pageSize int32) *Query {
 	if q.err != nil {
 		return q
 	}
-	q.plan.Page = &shared.DataPagination{PageNum: pageNum, PageSize: pageSize}
+	q.plan.Page = &plugindbplan.DataPagination{PageNum: pageNum, PageSize: pageSize}
 	return q
 }

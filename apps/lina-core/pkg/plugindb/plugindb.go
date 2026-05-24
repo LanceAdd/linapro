@@ -1,7 +1,7 @@
 // Package plugindb exposes a governed ORM-style facade for dynamic plugins.
 package plugindb
 
-import "lina-core/pkg/plugindb/shared"
+import plugindbplan "lina-core/pkg/plugindb/internal/plan"
 
 // DB exposes the guest-side governed data builder entry.
 type DB struct{}
@@ -9,7 +9,7 @@ type DB struct{}
 // Query represents one single-table governed query builder.
 type Query struct {
 	table string
-	plan  *shared.DataQueryPlan
+	plan  *plugindbplan.DataQueryPlan
 	err   error
 }
 
@@ -26,7 +26,7 @@ type MutationResult struct {
 // Tx represents one governed mutation transaction builder.
 type Tx struct {
 	table      string
-	operations []*shared.DataMutationPlan
+	operations []*plugindbplan.DataMutationPlan
 	err        error
 }
 

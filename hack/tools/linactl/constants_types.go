@@ -31,6 +31,7 @@ type commandSpec struct {
 	Description string
 	Usage       string
 	Internal    bool
+	Hidden      bool
 	Run         func(context.Context, *app, commandInput) error
 }
 
@@ -50,6 +51,7 @@ type app struct {
 	env  []string
 
 	execCommand func(context.Context, string, ...string) *exec.Cmd
+	executable  func() (string, error)
 	lookPath    func(string) (string, error)
 	waitHTTP    func(string, string, string, string, time.Duration) error
 	// portInUse reports whether the given TCP port on localhost is currently

@@ -7,7 +7,7 @@ package plugindb
 import (
 	"github.com/gogf/gf/v2/errors/gerror"
 
-	"lina-core/pkg/plugindb/shared"
+	plugindbplan "lina-core/pkg/plugindb/internal/plan"
 )
 
 // One is unavailable outside wasip1 builds.
@@ -45,5 +45,5 @@ func (db *DB) Transaction(_ func(tx *Tx) error) error {
 	return gerror.New("plugindb guest execution is only available for wasip1 builds")
 }
 
-// Compile-time anchor to keep the shared enum package referenced in stub builds.
-var _ shared.DataPlanAction
+// Compile-time anchor to keep the internal plan package referenced in stub builds.
+var _ plugindbplan.DataPlanAction

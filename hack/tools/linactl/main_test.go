@@ -142,7 +142,7 @@ func TestPrintHelpHidesInternalCommands(t *testing.T) {
 		t.Fatalf("printHelp returned error: %v", err)
 	}
 	output := stdout.String()
-	for _, command := range []string{"cli", "cli.install", "ctrl", "dao"} {
+	for _, command := range []string{"ctrl", "dao", "__goframe"} {
 		if strings.Contains(output, "\n  "+command+" ") {
 			t.Fatalf("root help should hide internal command %q:\n%s", command, output)
 		}
@@ -170,10 +170,128 @@ func TestPrintHelpAllIncludesInternalCommands(t *testing.T) {
 		t.Fatalf("printHelp returned error: %v", err)
 	}
 	output := stdout.String()
-	for _, command := range []string{"cli", "cli.install", "ctrl", "dao"} {
+	for _, command := range []string{"ctrl", "dao"} {
 		if !strings.Contains(output, "\n  "+command+" ") {
 			t.Fatalf("full help should include internal command %q:\n%s", command, output)
 		}
+	}
+	if strings.Contains(output, "\n  __goframe ") {
+		t.Fatalf("full help should still hide hidden child command __goframe:\n%s", output)
+	}
+}
+
+// TestHiddenGoFrameCommandHelpIsNotPublic verifies direct help lookup cannot
+// turn the hidden bridge into a documented command surface.
+func TestHiddenGoFrameCommandHelpIsNotPublic(t *testing.T) {
+	application := newApp(ioDiscard{}, ioDiscard{}, strings.NewReader(""))
+	err := application.run(context.Background(), []string{"help", "__goframe"})
+	if err == nil || !strings.Contains(err.Error(), `unknown command "__goframe"`) {
+		t.Fatalf("expected hidden command help to be rejected, got %v", err)
+	}
+}
+
+// TestCommandRegistryRemovesExternalGoFrameInstaller verifies code generation
+// no longer exposes commands that download an external gf binary.
+func TestCommandRegistryRemovesExternalGoFrameInstaller(t *testing.T) {
+	registry := commandRegistry()
+	for _, command := range []string{"cli", "cli.install"} {
+		if _, ok := registry[command]; ok {
+			t.Fatalf("legacy external GoFrame command %q should not be registered", command)
+		}
+	}
+}
+
+// TestRunCtrlDispatchesEmbeddedGoFrame verifies linactl ctrl starts the hidden
+// linactl child entry instead of resolving or executing gf from PATH.
+func TestRunCtrlDispatchesEmbeddedGoFrame(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "apps", "lina-core"), 0o755); err != nil {
+		t.Fatalf("mkdir core dir: %v", err)
+	}
+	application, calls := newGoFrameDispatchTestApp(t, root, filepath.Join(root, "linactl-test"))
+
+	if err := runCtrl(context.Background(), application, commandInput{}); err != nil {
+		t.Fatalf("runCtrl returned error: %v", err)
+	}
+
+	requireSingleGoFrameDispatch(t, calls, root, filepath.Join(root, "linactl-test"), []string{"__goframe", "gen", "ctrl"})
+}
+
+// TestRunDaoDispatchesEmbeddedGoFrame verifies linactl dao starts the hidden
+// linactl child entry instead of resolving or executing gf from PATH.
+func TestRunDaoDispatchesEmbeddedGoFrame(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "apps", "lina-core"), 0o755); err != nil {
+		t.Fatalf("mkdir core dir: %v", err)
+	}
+	application, calls := newGoFrameDispatchTestApp(t, root, filepath.Join(root, "linactl-test"))
+
+	if err := runDao(context.Background(), application, commandInput{}); err != nil {
+		t.Fatalf("runDao returned error: %v", err)
+	}
+
+	requireSingleGoFrameDispatch(t, calls, root, filepath.Join(root, "linactl-test"), []string{"__goframe", "gen", "dao"})
+}
+
+// TestRunEmbeddedGoFrameRejectsParameters verifies the hidden entry has a
+// narrow positional surface and cannot be used as a generic gf proxy.
+func TestRunEmbeddedGoFrameRejectsParameters(t *testing.T) {
+	application := newApp(ioDiscard{}, ioDiscard{}, strings.NewReader(""))
+	application.root = t.TempDir()
+
+	err := runEmbeddedGoFrame(context.Background(), application, commandInput{
+		Args:   []string{"gen", "ctrl"},
+		Params: map[string]string{"path": "api"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "only supports positional commands") {
+		t.Fatalf("expected hidden command parameter error, got %v", err)
+	}
+}
+
+// TestEmbeddedGoFrameCtrlSmokeWithoutExternalGF runs the hidden child command
+// against a minimal GoFrame project with PATH cleared. It proves controller
+// generation uses the embedded GoFrame CLI module instead of a gf executable.
+func TestEmbeddedGoFrameCtrlSmokeWithoutExternalGF(t *testing.T) {
+	root := t.TempDir()
+	coreDir := filepath.Join(root, "apps", "lina-core")
+	if err := os.MkdirAll(filepath.Join(coreDir, "hack"), 0o755); err != nil {
+		t.Fatalf("mkdir core hack dir: %v", err)
+	}
+	writeFile(t, filepath.Join(coreDir, "go.mod"), `module example.com/smoke
+
+go 1.25.0
+
+require github.com/gogf/gf/v2 v2.10.1
+`)
+	writeFile(t, filepath.Join(coreDir, "api", "demo", "v1", "hello.go"), `package v1
+
+import "github.com/gogf/gf/v2/frame/g"
+
+type HelloReq struct {
+	g.Meta `+"`"+`path:"/hello" method:"get"`+"`"+`
+}
+
+type HelloRes struct{}
+`)
+
+	helper := exec.Command(os.Args[0], "-test.run=TestHelperEmbeddedGoFrameCtrl", "--", root)
+	helper.Env = []string{
+		"PATH=",
+		"HOME=" + t.TempDir(),
+		"LINACTL_TEST_EMBEDDED_GOFRAME=1",
+	}
+	output, err := helper.CombinedOutput()
+	if err != nil {
+		t.Fatalf("embedded GoFrame ctrl helper failed: %v\n%s", err, string(output))
+	}
+
+	controllerFile := filepath.Join(coreDir, "internal", "controller", "demo", "demo_v1_hello.go")
+	content, err := os.ReadFile(controllerFile)
+	if err != nil {
+		t.Fatalf("read generated controller %s: %v\nhelper output:\n%s", controllerFile, err, string(output))
+	}
+	if !strings.Contains(string(content), "func (c *ControllerV1) Hello(") {
+		t.Fatalf("generated controller does not contain Hello method:\n%s", string(content))
 	}
 }
 
@@ -1817,6 +1935,20 @@ func TestHelperCommandFailure(t *testing.T) {
 	os.Exit(1)
 }
 
+// TestHelperEmbeddedGoFrameCtrl invokes the hidden GoFrame bridge in a separate
+// process so any GoFrame CLI fatal exit cannot terminate the parent test.
+func TestHelperEmbeddedGoFrameCtrl(t *testing.T) {
+	if len(os.Args) < 4 || os.Args[len(os.Args)-2] != "--" || os.Getenv("LINACTL_TEST_EMBEDDED_GOFRAME") != "1" {
+		return
+	}
+	application := newApp(os.Stdout, os.Stderr, strings.NewReader(""))
+	application.root = os.Args[len(os.Args)-1]
+	if err := runEmbeddedGoFrame(context.Background(), application, commandInput{Args: []string{"gen", "ctrl"}}); err != nil {
+		t.Fatalf("run embedded GoFrame ctrl: %v", err)
+	}
+	os.Exit(0)
+}
+
 // TestHelperPrintAndFail prints a deterministic diagnostic and exits with
 // failure for command-output error tests.
 func TestHelperPrintAndFail(t *testing.T) {
@@ -1915,6 +2047,57 @@ func writeFile(t *testing.T, path string, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+type capturedCommand struct {
+	name string
+	args []string
+}
+
+func newGoFrameDispatchTestApp(t *testing.T, root string, executable string) (*app, *[]capturedCommand) {
+	t.Helper()
+	application := newApp(ioDiscard{}, ioDiscard{}, strings.NewReader(""))
+	application.root = root
+	application.executable = func() (string, error) {
+		return executable, nil
+	}
+	application.lookPath = func(name string) (string, error) {
+		if name == "gf" {
+			t.Fatalf("GoFrame generation must not resolve external gf from PATH")
+		}
+		return name, nil
+	}
+	var calls []capturedCommand
+	application.execCommand = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "gf" {
+			t.Fatalf("GoFrame generation must not execute external gf")
+		}
+		calls = append(calls, capturedCommand{
+			name: name,
+			args: append([]string(nil), args...),
+		})
+		return exec.Command(os.Args[0], "-test.run=TestHelperCommandSuccess", "--")
+	}
+	return application, &calls
+}
+
+func requireSingleGoFrameDispatch(t *testing.T, calls *[]capturedCommand, root string, executable string, expectedArgs []string) {
+	t.Helper()
+	if len(*calls) != 1 {
+		t.Fatalf("expected one child command, got %d: %#v", len(*calls), *calls)
+	}
+	call := (*calls)[0]
+	if call.name != executable {
+		t.Fatalf("child command name mismatch: got %q want %q", call.name, executable)
+	}
+	if len(call.args) != len(expectedArgs) {
+		t.Fatalf("child command args length mismatch: got %#v want %#v", call.args, expectedArgs)
+	}
+	for i := range expectedArgs {
+		if call.args[i] != expectedArgs[i] {
+			t.Fatalf("child command args mismatch: got %#v want %#v", call.args, expectedArgs)
+		}
 	}
 }
 

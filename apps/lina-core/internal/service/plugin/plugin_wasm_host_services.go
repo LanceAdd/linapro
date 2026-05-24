@@ -21,7 +21,9 @@ func ConfigureWasmHostServices(
 	lockSvc hostlock.Service,
 	notifySvc notifysvc.Service,
 	configSvc configsvc.PluginConfigReader,
-	configAdapter contract.ConfigService,
+	configFactory contract.ConfigServiceFactory,
+	hostConfigSvc contract.HostConfigService,
+	manifestFactory contract.ManifestServiceFactory,
 ) error {
 	if err := wasm.ConfigureCacheHostService(kvCacheSvc); err != nil {
 		return gerror.Wrap(err, "configure wasm cache host service failed")
@@ -35,8 +37,14 @@ func ConfigureWasmHostServices(
 	if err := wasm.ConfigureStorageHostService(configSvc); err != nil {
 		return gerror.Wrap(err, "configure wasm storage host service failed")
 	}
-	if err := wasm.ConfigureConfigHostService(configAdapter); err != nil {
+	if err := wasm.ConfigureConfigHostService(configFactory); err != nil {
 		return gerror.Wrap(err, "configure wasm config host service failed")
+	}
+	if err := wasm.ConfigureHostConfigService(hostConfigSvc); err != nil {
+		return gerror.Wrap(err, "configure wasm host config service failed")
+	}
+	if err := wasm.ConfigureManifestHostService(manifestFactory); err != nil {
+		return gerror.Wrap(err, "configure wasm manifest host service failed")
 	}
 	return nil
 }

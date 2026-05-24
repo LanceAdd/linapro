@@ -56,6 +56,10 @@ func buildRuntimeWasmArtifactFromSource(pluginDir string, outputDir string) (*Ru
 	if err != nil {
 		return nil, err
 	}
+	manifestResources, err := collectManifestResources(pluginDir, embeddedResources)
+	if err != nil {
+		return nil, err
+	}
 	hookSpecs, err := collectHookSpecs(pluginDir, manifest.ID)
 	if err != nil {
 		return nil, err
@@ -89,6 +93,7 @@ func buildRuntimeWasmArtifactFromSource(pluginDir string, outputDir string) (*Ru
 		installSQLAssets,
 		uninstallSQLAssets,
 		mockSQLAssets,
+		manifestResources,
 		hookSpecs,
 		lifecycleSpecs,
 		resourceSpecs,

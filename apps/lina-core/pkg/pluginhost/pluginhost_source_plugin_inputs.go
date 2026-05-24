@@ -3,6 +3,8 @@
 
 package pluginhost
 
+import "lina-core/pkg/pluginhost/internal/valuecopy"
+
 // HookPayload exposes one published host hook payload.
 type HookPayload interface {
 	// ExtensionPoint returns the published extension point of the current callback.
@@ -136,7 +138,7 @@ func NewHookPayload(point ExtensionPoint, values map[string]interface{}) HookPay
 func NewHookPayloadWithServices(point ExtensionPoint, values map[string]interface{}, hostServices HostServices) HookPayload {
 	return &hookPayload{
 		point:        point,
-		values:       cloneValueMap(values),
+		values:       valuecopy.Map(values),
 		hostServices: hostServices,
 	}
 }
@@ -258,7 +260,7 @@ func (p *hookPayload) Values() map[string]interface{} {
 	if p == nil {
 		return map[string]interface{}{}
 	}
-	return cloneValueMap(p.values)
+	return valuecopy.Map(p.values)
 }
 
 // HostServices returns the host-published service directory for hook handlers.

@@ -15,8 +15,7 @@ import (
 	"lina-core/internal/model/do"
 	"lina-core/internal/service/plugin/internal/catalog"
 	"lina-core/pkg/pluginbridge"
-	plugindbhost "lina-core/pkg/plugindb/host"
-	"lina-core/pkg/plugindb/shared"
+	"lina-core/pkg/plugindb"
 )
 
 // TestExecuteCRUDLifecycle verifies governed create, list, get, update, and delete flows.
@@ -311,21 +310,20 @@ func TestExecuteListSupportsPlugindbPlan(t *testing.T) {
 		}
 	}
 
-	planJSON, err := shared.MarshalQueryPlanJSON(&shared.DataQueryPlan{
-		Table:  resource.Table,
-		Action: shared.DataPlanActionList,
-		Fields: []string{"nodeKey", "currentState"},
-		Filters: []*shared.DataFilter{
-			mustNewEQFilter(t, "pluginId", pluginMarker),
-			mustNewINFilter(t, "currentState", []string{"pending", "running"}),
-			mustNewLikeFilter(t, "nodeKey", "adv-"),
+	planJSON := mustMarshalJSON(t, map[string]any{
+		"table":  resource.Table,
+		"action": "list",
+		"fields": []string{"nodeKey", "currentState"},
+		"filters": []map[string]any{
+			{"field": "pluginId", "operator": "eq", "valueJson": mustMarshalJSON(t, pluginMarker)},
+			{"field": "currentState", "operator": "in", "valuesJson": [][]byte{mustMarshalJSON(t, "pending"), mustMarshalJSON(t, "running")}},
+			{"field": "nodeKey", "operator": "like", "valueJson": mustMarshalJSON(t, "adv-")},
 		},
-		Orders: []*shared.DataOrder{shared.NewDESCOrder("nodeKey")},
-		Page:   &shared.DataPagination{PageNum: 1, PageSize: 10},
+		"orders": []map[string]any{
+			{"field": "nodeKey", "direction": "desc"},
+		},
+		"page": map[string]any{"pageNum": 1, "pageSize": 10},
 	})
-	if err != nil {
-		t.Fatalf("MarshalQueryPlanJSON failed: %v", err)
-	}
 
 	listResponse, err := ExecuteList(
 		ctx,
@@ -350,16 +348,13 @@ func TestExecuteListSupportsPlugindbPlan(t *testing.T) {
 		t.Fatalf("expected selected fields only, got %#v", firstRecord)
 	}
 
-	countPlanJSON, err := shared.MarshalQueryPlanJSON(&shared.DataQueryPlan{
-		Table:  resource.Table,
-		Action: shared.DataPlanActionCount,
-		Filters: []*shared.DataFilter{
-			mustNewEQFilter(t, "pluginId", pluginMarker),
+	countPlanJSON := mustMarshalJSON(t, map[string]any{
+		"table":  resource.Table,
+		"action": "count",
+		"filters": []map[string]any{
+			{"field": "pluginId", "operator": "eq", "valueJson": mustMarshalJSON(t, pluginMarker)},
 		},
 	})
-	if err != nil {
-		t.Fatalf("MarshalQueryPlanJSON count failed: %v", err)
-	}
 	countResponse, err := ExecuteList(
 		ctx,
 		"test-plugin-data",
@@ -444,15 +439,12 @@ func TestExecuteGetSupportsPlugindbFieldSelection(t *testing.T) {
 		t.Fatalf("ExecuteCreate failed: %v", err)
 	}
 
-	planJSON, err := shared.MarshalQueryPlanJSON(&shared.DataQueryPlan{
-		Table:   resource.Table,
-		Action:  shared.DataPlanActionGet,
-		Fields:  []string{"currentState"},
-		KeyJSON: append([]byte(nil), createResponse.KeyJSON...),
+	planJSON := mustMarshalJSON(t, map[string]any{
+		"table":   resource.Table,
+		"action":  "get",
+		"fields":  []string{"currentState"},
+		"keyJson": append([]byte(nil), createResponse.KeyJSON...),
 	})
-	if err != nil {
-		t.Fatalf("MarshalQueryPlanJSON failed: %v", err)
-	}
 	getResponse, err := ExecuteGet(
 		ctx,
 		"test-plugin-data",
@@ -484,7 +476,7 @@ func TestPluginDataDBDoCommitRejectsUnauthorizedTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getPluginDataDB failed: %v", err)
 	}
-	ctx := withPluginDataAudit(context.Background(), &plugindbhost.AuditMetadata{
+	ctx := withPluginDataAudit(context.Background(), &plugindb.AuditMetadata{
 		PluginID:      "test-plugin-data",
 		Table:         "sys_plugin_node_state",
 		Method:        pluginbridge.HostServiceMethodDataDelete,
@@ -615,34 +607,4 @@ func mustUnmarshalJSONRecord(t *testing.T, data []byte) map[string]any {
 		t.Fatalf("json unmarshal record failed: %v", err)
 	}
 	return record
-}
-
-// mustNewEQFilter builds an equality filter and fails the test on validation error.
-func mustNewEQFilter(t *testing.T, field string, value any) *shared.DataFilter {
-	t.Helper()
-	filter, err := shared.NewEQFilter(field, value)
-	if err != nil {
-		t.Fatalf("build eq filter failed: %v", err)
-	}
-	return filter
-}
-
-// mustNewINFilter builds an IN filter and fails the test on validation error.
-func mustNewINFilter(t *testing.T, field string, values any) *shared.DataFilter {
-	t.Helper()
-	filter, err := shared.NewINFilter(field, values)
-	if err != nil {
-		t.Fatalf("build in filter failed: %v", err)
-	}
-	return filter
-}
-
-// mustNewLikeFilter builds a LIKE filter and fails the test on validation error.
-func mustNewLikeFilter(t *testing.T, field string, value any) *shared.DataFilter {
-	t.Helper()
-	filter, err := shared.NewLikeFilter(field, value)
-	if err != nil {
-		t.Fatalf("build like filter failed: %v", err)
-	}
-	return filter
 }

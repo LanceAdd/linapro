@@ -1,15 +1,14 @@
-// This file verifies the generic read-only plugin configuration service.
+// This file verifies the plugin-scoped read-only configuration service.
 
 package config
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/os/gcfg"
 )
 
 // scanTarget captures nested test configuration values.
@@ -22,158 +21,145 @@ type scanTarget struct {
 	Count int `json:"count"`
 }
 
-// TestGetReturnsRawConfigForAnyKey verifies callers can read arbitrary config keys.
-func TestGetReturnsRawConfigForAnyKey(t *testing.T) {
-	setTestConfigAdapter(t, `
-custom:
-  name: demo
-`)
+// TestScopedConfigReadsDevelopmentPluginConfig verifies development config is
+// loaded from the plugin-owned manifest/config/config.yaml file.
+func TestScopedConfigReadsDevelopmentPluginConfig(t *testing.T) {
+	repoRoot := t.TempDir()
+	writePluginConfig(t, repoRoot, "plugin-a", "storage:\n  endpoint: dev\n")
 
-	value, err := New().Get(context.Background(), "custom.name")
+	svc := NewFactory("", repoRoot).ForPlugin("plugin-a")
+	value, err := svc.String(context.Background(), "storage.endpoint", "")
 	if err != nil {
-		t.Fatalf("get config value: %v", err)
+		t.Fatalf("read development config: %v", err)
 	}
-	if value == nil {
-		t.Fatal("expected config value")
-	}
-	if got := value.String(); got != "demo" {
-		t.Fatalf("expected custom.name to be demo, got %q", got)
+	if value != "dev" {
+		t.Fatalf("expected development value dev, got %q", value)
 	}
 }
 
-// TestExistsReportsConfiguredFalseAndZero verifies existence does not treat false or zero as missing.
-func TestExistsReportsConfiguredFalseAndZero(t *testing.T) {
-	setTestConfigAdapter(t, `
-feature:
-  enabled: false
-  retries: 0
-`)
+// TestScopedConfigProductionOverridesDevelopment verifies external production
+// config is preferred over source-tree development config.
+func TestScopedConfigProductionOverridesDevelopment(t *testing.T) {
+	repoRoot := t.TempDir()
+	productionRoot := t.TempDir()
+	writePluginConfig(t, repoRoot, "plugin-a", "storage:\n  endpoint: dev\n")
+	writeProductionPluginConfig(t, productionRoot, "plugin-a", "storage:\n  endpoint: prod\n")
 
-	svc := New()
-	ctx := context.Background()
-
-	exists, err := svc.Exists(ctx, "feature.enabled")
+	svc := NewFactory(productionRoot, repoRoot).ForPlugin("plugin-a")
+	value, err := svc.String(context.Background(), "storage.endpoint", "")
 	if err != nil {
-		t.Fatalf("check bool key exists: %v", err)
+		t.Fatalf("read production config: %v", err)
 	}
-	if !exists {
-		t.Fatal("expected feature.enabled to exist")
-	}
-
-	exists, err = svc.Exists(ctx, "feature.retries")
-	if err != nil {
-		t.Fatalf("check int key exists: %v", err)
-	}
-	if !exists {
-		t.Fatal("expected feature.retries to exist")
-	}
-
-	exists, err = svc.Exists(ctx, "feature.missing")
-	if err != nil {
-		t.Fatalf("check missing key exists: %v", err)
-	}
-	if exists {
-		t.Fatal("expected missing key to not exist")
+	if value != "prod" {
+		t.Fatalf("expected production value prod, got %q", value)
 	}
 }
 
-// TestScanBindsConfigSection verifies section scanning into caller-owned structs.
-func TestScanBindsConfigSection(t *testing.T) {
-	setTestConfigAdapter(t, `
+// TestScopedConfigReadsArtifactDefaultAfterFiles verifies artifact config is
+// only used after production and development config files are absent.
+func TestScopedConfigReadsArtifactDefaultAfterFiles(t *testing.T) {
+	factory := NewFactory(t.TempDir(), t.TempDir()).
+		WithArtifactConfig("plugin-a", []byte("storage:\n  endpoint: artifact\n"))
+
+	svc := factory.ForPlugin("plugin-a")
+	value, err := svc.String(context.Background(), "storage.endpoint", "")
+	if err != nil {
+		t.Fatalf("read artifact config: %v", err)
+	}
+	if value != "artifact" {
+		t.Fatalf("expected artifact value, got %q", value)
+	}
+}
+
+// TestScopedConfigIgnoresTemplateConfig verifies config.example.yaml is never
+// loaded as runtime defaults.
+func TestScopedConfigIgnoresTemplateConfig(t *testing.T) {
+	repoRoot := t.TempDir()
+	templatePath := filepath.Join(repoRoot, "apps", "lina-plugins", "plugin-a", "manifest", "config", TemplateConfigFileName)
+	writeFile(t, templatePath, "storage:\n  endpoint: template\n")
+
+	svc := NewFactory("", repoRoot).ForPlugin("plugin-a")
+	value, err := svc.String(context.Background(), "storage.endpoint", "fallback")
+	if err != nil {
+		t.Fatalf("read missing runtime config: %v", err)
+	}
+	if value != "fallback" {
+		t.Fatalf("expected template to be ignored, got %q", value)
+	}
+}
+
+// TestScopedConfigDoesNotReadHostConfig verifies plugin keys do not fall back
+// to the host global GoFrame configuration tree.
+func TestScopedConfigDoesNotReadHostConfig(t *testing.T) {
+	svc := NewFactory(t.TempDir(), t.TempDir()).ForPlugin("plugin-a")
+	value, err := svc.String(context.Background(), "database.default.link", "not-found")
+	if err != nil {
+		t.Fatalf("read missing plugin config: %v", err)
+	}
+	if value != "not-found" {
+		t.Fatalf("expected host config to stay isolated, got %q", value)
+	}
+}
+
+// TestScopedConfigRejectsRootLookup verifies callers cannot request a full
+// plugin config snapshot through a blank or root key.
+func TestScopedConfigRejectsRootLookup(t *testing.T) {
+	svc := NewFactory(t.TempDir(), t.TempDir()).ForPlugin("plugin-a")
+	for _, key := range []string{"", " ", "."} {
+		if _, err := svc.Get(context.Background(), key); err == nil {
+			t.Fatalf("expected root lookup %q to fail", key)
+		}
+	}
+}
+
+// TestScopedConfigTypedHelpers verifies typed helper behavior remains scoped.
+func TestScopedConfigTypedHelpers(t *testing.T) {
+	repoRoot := t.TempDir()
+	writePluginConfig(t, repoRoot, "plugin-a", `
 custom:
   name: demo
   enabled: false
   count: 0
-`)
-
-	target := &scanTarget{}
-	if err := New().Scan(context.Background(), "custom", target); err != nil {
-		t.Fatalf("scan config section: %v", err)
-	}
-
-	if target.Name != "demo" {
-		t.Fatalf("expected name demo, got %q", target.Name)
-	}
-	if target.Enabled {
-		t.Fatal("expected enabled to be false")
-	}
-	if target.Count != 0 {
-		t.Fatalf("expected count 0, got %d", target.Count)
-	}
-}
-
-// TestDefaultsForMissingAndBlankKeys verifies default handling for absent and blank values.
-func TestDefaultsForMissingAndBlankKeys(t *testing.T) {
-	setTestConfigAdapter(t, `
-strings:
-  blank: ""
-feature:
-  enabled: false
-  retries: 0
-duration:
-  blank: ""
-`)
-
-	svc := New()
-	ctx := context.Background()
-
-	text, err := svc.String(ctx, "strings.blank", "fallback")
-	if err != nil {
-		t.Fatalf("read blank string: %v", err)
-	}
-	if text != "fallback" {
-		t.Fatalf("expected blank string default, got %q", text)
-	}
-
-	enabled, err := svc.Bool(ctx, "feature.enabled", true)
-	if err != nil {
-		t.Fatalf("read bool: %v", err)
-	}
-	if enabled {
-		t.Fatal("expected configured false bool to override default true")
-	}
-
-	retries, err := svc.Int(ctx, "feature.retries", 3)
-	if err != nil {
-		t.Fatalf("read int: %v", err)
-	}
-	if retries != 0 {
-		t.Fatalf("expected configured zero int to override default, got %d", retries)
-	}
-
-	interval, err := svc.Duration(ctx, "duration.blank", time.Minute)
-	if err != nil {
-		t.Fatalf("read blank duration: %v", err)
-	}
-	if interval != time.Minute {
-		t.Fatalf("expected blank duration default, got %s", interval)
-	}
-}
-
-// TestDurationParsesDurationString verifies duration strings are parsed through the generic service.
-func TestDurationParsesDurationString(t *testing.T) {
-	setTestConfigAdapter(t, `
 duration:
   interval: 45s
+  blank: ""
 `)
 
-	interval, err := New().Duration(context.Background(), "duration.interval", time.Minute)
+	svc := NewFactory("", repoRoot).ForPlugin("plugin-a")
+	ctx := context.Background()
+
+	target := &scanTarget{}
+	if err := svc.Scan(ctx, "custom", target); err != nil {
+		t.Fatalf("scan config section: %v", err)
+	}
+	if target.Name != "demo" || target.Enabled || target.Count != 0 {
+		t.Fatalf("unexpected scan target: %#v", target)
+	}
+
+	interval, err := svc.Duration(ctx, "duration.interval", time.Minute)
 	if err != nil {
 		t.Fatalf("read duration: %v", err)
 	}
 	if interval != 45*time.Second {
 		t.Fatalf("expected 45s duration, got %s", interval)
 	}
+
+	blank, err := svc.Duration(ctx, "duration.blank", time.Minute)
+	if err != nil {
+		t.Fatalf("read blank duration: %v", err)
+	}
+	if blank != time.Minute {
+		t.Fatalf("expected blank duration default, got %s", blank)
+	}
 }
 
-// TestDurationReturnsErrorForInvalidValue verifies invalid duration strings return errors.
-func TestDurationReturnsErrorForInvalidValue(t *testing.T) {
-	setTestConfigAdapter(t, `
-duration:
-  interval: invalid
-`)
+// TestScopedConfigDurationReturnsErrorForInvalidValue verifies invalid
+// duration strings still report the key.
+func TestScopedConfigDurationReturnsErrorForInvalidValue(t *testing.T) {
+	repoRoot := t.TempDir()
+	writePluginConfig(t, repoRoot, "plugin-a", "duration:\n  interval: invalid\n")
 
-	_, err := New().Duration(context.Background(), "duration.interval", time.Minute)
+	_, err := NewFactory("", repoRoot).ForPlugin("plugin-a").Duration(context.Background(), "duration.interval", time.Minute)
 	if err == nil {
 		t.Fatal("expected invalid duration error")
 	}
@@ -182,32 +168,29 @@ duration:
 	}
 }
 
-// TestScanRejectsNilTarget verifies scan calls cannot silently ignore nil targets.
-func TestScanRejectsNilTarget(t *testing.T) {
-	setTestConfigAdapter(t, `
-custom:
-  name: demo
-`)
-
-	err := New().Scan(context.Background(), "custom", nil)
-	if err == nil {
-		t.Fatal("expected nil target error")
-	}
+// writePluginConfig writes a development plugin config file.
+func writePluginConfig(t *testing.T, repoRoot string, pluginID string, content string) {
+	t.Helper()
+	writeFile(
+		t,
+		filepath.Join(repoRoot, "apps", "lina-plugins", pluginID, "manifest", "config", RuntimeConfigFileName),
+		content,
+	)
 }
 
-// setTestConfigAdapter swaps the process config adapter for one test case.
-func setTestConfigAdapter(t *testing.T, content string) {
+// writeProductionPluginConfig writes a production plugin config file.
+func writeProductionPluginConfig(t *testing.T, productionRoot string, pluginID string, content string) {
 	t.Helper()
+	writeFile(t, filepath.Join(productionRoot, "plugins", pluginID, RuntimeConfigFileName), content)
+}
 
-	adapter, err := gcfg.NewAdapterContent(content)
-	if err != nil {
-		t.Fatalf("create content adapter: %v", err)
+// writeFile writes one fixture file for a test.
+func writeFile(t *testing.T, filePath string, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+		t.Fatalf("create fixture dir: %v", err)
 	}
-
-	originalAdapter := g.Cfg().GetAdapter()
-	g.Cfg().SetAdapter(adapter)
-
-	t.Cleanup(func() {
-		g.Cfg().SetAdapter(originalAdapter)
-	})
+	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write fixture file: %v", err)
+	}
 }

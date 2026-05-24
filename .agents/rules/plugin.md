@@ -17,6 +17,7 @@
 - 修改源码插件编译嵌入对接结构，包括`plugin_embed.go`、registrar、provider 或 adapter
 - 修改动态插件运行时对接结构，包括`main.go`、`go.mod`、WASM 构建入口、`pluginbridge`路由声明、`hostServices`声明或动态插件产物资源视图
 - 修改宿主与插件之间的资源归属、发布产物、打包资源或生命周期扫描逻辑
+- 修改插件访问宿主能力、宿主调用插件能力或插件间能力调用的接口契约与授权边界
 
 ## 插件通用资源要求
 
@@ -53,6 +54,7 @@
 - 插件若需要自有数据库访问，必须在插件自己的`backend/`下维护`hack/config.yaml`。
 - 插件的`gf gen dao`生成结果必须放在`backend/internal/dao/`与`backend/internal/model/{do,entity}/`。
 - 禁止插件重新依赖宿主的`dao/do/entity`生成工件。
+- 源码插件和动态插件都不得把宿主`DAO`、`DO`、`Entity`、私有缓存快照、运行时状态或内部配置结构作为插件接口契约、服务参数或响应结构。
 - 动态插件涉及宿主数据访问时，必须通过`plugin.yaml`的`hostServices`资源边界和宿主授权的 host service 协议，不得直接依赖宿主私有 DAO、DO 或 Entity 工件。
 
 ## 源码插件对接要求
@@ -99,6 +101,9 @@
 - 源码插件应通过宿主稳定能力接缝访问宿主能力，不得直接耦合宿主私有实现。
 - 源码插件控制器和服务应通过 registrar 或等价上下文获取宿主发布的`pkg/pluginservice/*`适配器。
 - 动态插件必须通过`pluginbridge`、WASM host call 或版本化 host service 协议访问宿主能力。
+- 插件与宿主之间的能力调用必须视为跨模块接口契约调用，禁止源码插件或动态插件直接调用宿主内部 service 实现、私有方法、内部 DAO、内部模型、缓存快照或运行时状态。
+- 宿主调用插件能力也必须通过插件入口、生命周期、路由、hook、`pluginbridge`或版本化协议完成，不得把动态插件 guest 内部 controller/service 当作宿主原生实现直接加载。
+- 插件接口契约必须使用契约自有的请求、响应和值对象表达数据边界；需要新增宿主能力时，应新增或扩展受治理的`pkg/pluginservice/*`契约、`hostServices`授权声明、`pluginbridge`协议或版本化 host service，不得以直接依赖宿主内部结构替代。
 - 动态插件的`pluginbridge`、host call dispatcher、WASM export/import 等对接层必须只做协议适配、路由分发和宿主能力调用，不得绕过插件内部 controller/service 分层直接堆叠业务逻辑。
 - 生产路径不得自行构造孤立宿主服务适配器或绕过启动期共享服务实例。
 - 涉及缓存、权限、数据权限、`i18n`或运行时配置时，必须继续读取对应规则文件。
@@ -116,6 +121,8 @@
 - 审查必须先区分变更对象是插件通用资源、共享后端开发结构、源码插件对接结构、动态插件运行时对接结构还是动态插件发布产物资源视图。
 - 审查必须确认源码插件和动态插件均符合统一的`backend/api/`、`backend/plugin.go`、`backend/internal/controller/`和`backend/internal/service/`结构，且插件业务逻辑没有放到非`internal`目录或宿主目录。
 - 审查必须确认源码插件和动态插件数据库生成工件没有依赖宿主 DAO/DO/Entity。
+- 审查必须确认插件与宿主之间的调用通过稳定能力接缝、`pluginservice`契约、`pluginbridge`、WASM host call、版本化 host service 或`hostServices`授权边界完成，没有直接调用宿主内部 service 实现或访问宿主内部数据结构。
+- 审查必须确认插件接口契约没有泄漏宿主或插件内部`DAO`、`DO`、`Entity`、私有缓存、运行时状态或内部配置结构。
 - 审查必须拒绝动态插件用`main.go`、`pluginbridge`、host call dispatcher 或其他桥接文件替代 controller/service 分层承载业务逻辑。
 - 审查必须确认动态插件通过`type: dynamic`、WASM 构建入口、`pluginbridge`路由声明和`hostServices`授权模型表达运行时能力边界。
 - 审查必须确认源码插件和动态插件共享的 SQL、Mock 数据、i18n 和前端资源路径语义一致。

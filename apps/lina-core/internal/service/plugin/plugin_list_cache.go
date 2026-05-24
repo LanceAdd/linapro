@@ -226,6 +226,7 @@ func cloneHostServiceSpecs(in []*pluginbridge.HostServiceSpec) []*pluginbridge.H
 			Methods:   append([]string(nil), item.Methods...),
 			Paths:     append([]string(nil), item.Paths...),
 			Tables:    append([]string(nil), item.Tables...),
+			Keys:      append([]string(nil), item.Keys...),
 			Resources: cloneHostServiceResources(item.Resources),
 		})
 	}

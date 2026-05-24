@@ -12,7 +12,7 @@ import (
 	"lina-core/internal/dao"
 	"lina-core/internal/model/do"
 	"lina-core/internal/service/datascope"
-	bridgehostcall "lina-core/pkg/pluginbridge/hostcall"
+	bridgehostcall "lina-core/pkg/pluginbridge"
 )
 
 // handleHostStateGet processes OpcodeStateGet requests.

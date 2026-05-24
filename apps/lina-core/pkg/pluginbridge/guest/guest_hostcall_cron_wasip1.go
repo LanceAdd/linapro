@@ -7,14 +7,6 @@ package guest
 
 import "github.com/gogf/gf/v2/errors/gerror"
 
-// CronHostService exposes guest-side helpers for the cron registration host
-// service.
-type CronHostService interface {
-	// Register submits one dynamic-plugin cron declaration to the current
-	// host-side discovery collector.
-	Register(contract *CronContract) error
-}
-
 // cronHostService is the default guest-side cron host-service client.
 type cronHostService struct{}
 

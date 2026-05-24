@@ -157,6 +157,13 @@ func buildTestRuntimeWasmArtifactContent(
 		}
 		wasm = appendWasmCustomSection(wasm, pluginbridge.WasmSectionMockSQL, mockContent)
 	}
+	if len(runtimeMetadata.ManifestResources) > 0 {
+		resourceContent, marshalErr := json.Marshal(runtimeMetadata.ManifestResources)
+		if marshalErr != nil {
+			t.Fatalf("failed to marshal manifest resources: %v", marshalErr)
+		}
+		wasm = appendWasmCustomSection(wasm, pluginbridge.WasmSectionManifestResources, resourceContent)
+	}
 	if len(runtimeMetadata.LifecycleContracts) > 0 {
 		lifecycleContent, marshalErr := json.Marshal(runtimeMetadata.LifecycleContracts)
 		if marshalErr != nil {

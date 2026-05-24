@@ -14,6 +14,17 @@ func TestGuestContractsUseInterfaces(t *testing.T) {
 	assertGuestInterfaceType(t, (*GuestRuntime)(nil), "GuestRuntime")
 	assertGuestInterfaceType(t, (*GuestControllerRouteDispatcher)(nil), "GuestControllerRouteDispatcher")
 	assertGuestInterfaceType(t, (*DynamicRouteRegistrar)(nil), "DynamicRouteRegistrar")
+	assertGuestInterfaceType(t, (*RuntimeHostService)(nil), "RuntimeHostService")
+	assertGuestInterfaceType(t, (*StorageHostService)(nil), "StorageHostService")
+	assertGuestInterfaceType(t, (*HTTPHostService)(nil), "HTTPHostService")
+	assertGuestInterfaceType(t, (*DataHostService)(nil), "DataHostService")
+	assertGuestInterfaceType(t, (*CacheHostService)(nil), "CacheHostService")
+	assertGuestInterfaceType(t, (*LockHostService)(nil), "LockHostService")
+	assertGuestInterfaceType(t, (*ConfigHostService)(nil), "ConfigHostService")
+	assertGuestInterfaceType(t, (*NotifyHostService)(nil), "NotifyHostService")
+	assertGuestInterfaceType(t, (*CronHostService)(nil), "CronHostService")
+	assertGuestInterfaceType(t, (*HostConfigHostService)(nil), "HostConfigHostService")
+	assertGuestInterfaceType(t, (*ManifestHostService)(nil), "ManifestHostService")
 }
 
 // assertGuestInterfaceType verifies the reflected type under test is an

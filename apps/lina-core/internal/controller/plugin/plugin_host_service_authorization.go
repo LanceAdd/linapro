@@ -46,6 +46,7 @@ func buildAuthorizationInput(req *v1.HostServiceAuthorizationReq) *pluginsvc.Hos
 			Service:      strings.TrimSpace(item.Service),
 			Methods:      append([]string(nil), item.Methods...),
 			Paths:        append([]string(nil), item.Paths...),
+			Keys:         append([]string(nil), item.Keys...),
 			ResourceRefs: append([]string(nil), item.ResourceRefs...),
 			Tables:       append([]string(nil), item.Tables...),
 		})
@@ -69,6 +70,7 @@ func buildHostServicePermissionItems(
 			Service: spec.Service,
 			Methods: append([]string(nil), spec.Methods...),
 			Paths:   append([]string(nil), spec.Paths...),
+			Keys:    append([]string(nil), spec.Keys...),
 			Tables:  append([]string(nil), spec.Tables...),
 			TableItems: buildHostServicePermissionTableItems(
 				spec.Tables,

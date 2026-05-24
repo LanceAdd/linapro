@@ -198,14 +198,14 @@ var productionPanicPolicy = panicAuditPolicy{
 			Reason:   "Must constructor documents fail-fast behavior and has a non-Must alternative",
 		},
 		{
-			Path:     "apps/lina-core/pkg/pluginbridge/hostservice/hostservice_validation.go",
+			Path:     "apps/lina-core/pkg/pluginbridge/internal/hostservice/hostservice_validation.go",
 			Function: "MustNormalizeHostServiceSpecs",
 			Count:    1,
 			Category: panicCategoryMustConstructor,
 			Reason:   "Must helper is reserved for compile-time host service declarations",
 		},
 		{
-			Path:     "apps/lina-core/pkg/plugindb/host/db.go",
+			Path:     "apps/lina-core/pkg/plugindb/internal/host/db.go",
 			Function: "registerPluginDataDrivers",
 			Count:    1,
 			Category: panicCategoryStartup,

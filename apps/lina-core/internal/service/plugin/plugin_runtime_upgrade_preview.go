@@ -347,6 +347,8 @@ func buildRuntimeUpgradeHostServiceChange(
 		ToTables:          cloneSortedStrings(hostServiceTables(toSpec)),
 		FromPaths:         cloneSortedStrings(hostServicePaths(fromSpec)),
 		ToPaths:           cloneSortedStrings(hostServicePaths(toSpec)),
+		FromKeys:          cloneSortedStrings(hostServiceKeys(fromSpec)),
+		ToKeys:            cloneSortedStrings(hostServiceKeys(toSpec)),
 	}
 }
 
@@ -366,6 +368,9 @@ func runtimeUpgradeHostServiceChanged(
 		return true
 	}
 	if !stringSlicesEqual(hostServicePaths(fromSpec), hostServicePaths(toSpec)) {
+		return true
+	}
+	if !stringSlicesEqual(hostServiceKeys(fromSpec), hostServiceKeys(toSpec)) {
 		return true
 	}
 	return !stringSlicesEqual(hostServiceResourceRefs(fromSpec), hostServiceResourceRefs(toSpec))
@@ -393,6 +398,14 @@ func hostServicePaths(spec *pluginbridge.HostServiceSpec) []string {
 		return nil
 	}
 	return spec.Paths
+}
+
+// hostServiceKeys returns normalized public host config keys from one spec.
+func hostServiceKeys(spec *pluginbridge.HostServiceSpec) []string {
+	if spec == nil {
+		return nil
+	}
+	return spec.Keys
 }
 
 // hostServiceResources returns governed resources from one spec.

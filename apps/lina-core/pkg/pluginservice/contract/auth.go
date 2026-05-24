@@ -15,6 +15,15 @@ type AuthService interface {
 	SelectTenant(ctx context.Context, in SelectTenantInput) (*TenantTokenOutput, error)
 	// SwitchTenant validates membership, revokes the current token, and issues a new token.
 	SwitchTenant(ctx context.Context, in SwitchTenantInput) (*TenantTokenOutput, error)
+	// IssueImpersonationToken asks the host auth service to sign and register a
+	// tenant impersonation access token for the current platform administrator.
+	// Plugins remain responsible for their own business authorization and audit
+	// checks before calling this method; the host owns JWT signing, token IDs,
+	// online-session state, and permission-cache priming.
+	IssueImpersonationToken(ctx context.Context, in ImpersonationTokenIssueInput) (*ImpersonationTokenOutput, error)
+	// RevokeImpersonationToken validates that bearerToken is an impersonation
+	// access token for the optional tenant boundary and revokes the host session.
+	RevokeImpersonationToken(ctx context.Context, in ImpersonationTokenRevokeInput) error
 }
 
 // SelectTenantInput defines input for a pre-token tenant selection.
@@ -39,6 +48,37 @@ type TenantTokenOutput struct {
 	AccessToken string
 	// RefreshToken is the host-compatible refresh JWT for the same session.
 	RefreshToken string
+}
+
+// ImpersonationTokenIssueInput defines input for host-owned impersonation
+// token issuance.
+type ImpersonationTokenIssueInput struct {
+	// ActingUserID is the platform administrator user ID that owns the token.
+	ActingUserID int
+	// TenantID is the target tenant that the administrator enters.
+	TenantID int
+}
+
+// ImpersonationTokenRevokeInput defines input for host-owned impersonation
+// token revocation.
+type ImpersonationTokenRevokeInput struct {
+	// BearerToken is the impersonation access token or Authorization header value.
+	BearerToken string
+	// TenantID is the expected tenant. A zero value skips tenant matching.
+	TenantID int
+}
+
+// ImpersonationTokenOutput contains one host-signed impersonation access token
+// and the session metadata registered with host auth state.
+type ImpersonationTokenOutput struct {
+	// AccessToken is the host-compatible impersonation JWT.
+	AccessToken string
+	// TokenID is the generated token/session identifier.
+	TokenID string
+	// TenantID is the target tenant stored in token claims and session state.
+	TenantID int
+	// ActingUserID is the platform administrator user ID stored in token claims.
+	ActingUserID int
 }
 
 // BearerTokenFromContext extracts the bearer token from the current HTTP request.

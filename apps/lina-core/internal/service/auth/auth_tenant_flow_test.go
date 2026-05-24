@@ -16,8 +16,10 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"lina-core/internal/dao"
+	"lina-core/internal/model"
 	"lina-core/internal/model/do"
 	"lina-core/internal/model/entity"
+	"lina-core/internal/service/bizctx"
 	"lina-core/internal/service/datascope"
 	"lina-core/internal/service/kvcache"
 	"lina-core/internal/service/role"
@@ -85,6 +87,70 @@ func TestIssueTenantTokenPrimesAccessContextWithSelectedTenant(t *testing.T) {
 
 	if len(roleSvc.tenantIDs) != 1 || roleSvc.tenantIDs[0] != 11 {
 		t.Fatalf("expected role cache prime for tenant 11, got %v", roleSvc.tenantIDs)
+	}
+}
+
+// TestIssueImpersonationTokenUsesHostSignerAndTenantScopedPrime verifies
+// impersonation tokens are host-owned and permission priming receives the
+// target tenant plus impersonation business context.
+func TestIssueImpersonationTokenUsesHostSignerAndTenantScopedPrime(t *testing.T) {
+	ctx := context.Background()
+	svc := newTenantAuthTestService()
+	roleSvc := &trackingRoleTestService{}
+	svc.roleSvc = roleSvc
+	username := fmt.Sprintf("impersonation-admin-%d", time.Now().UnixNano())
+	userID := insertAuthTestUser(t, ctx, username, "admin123")
+
+	out, err := svc.IssueImpersonationToken(ctx, ImpersonationTokenIssueInput{ActingUserID: userID, TenantID: 42})
+	if err != nil {
+		t.Fatalf("issue impersonation token: %v", err)
+	}
+	if out.AccessToken == "" || out.TokenID == "" || out.TenantID != 42 || out.ActingUserID != userID {
+		t.Fatalf("unexpected impersonation output: %#v", out)
+	}
+	claims, err := svc.ParseToken(ctx, out.AccessToken)
+	if err != nil {
+		t.Fatalf("parse impersonation token: %v", err)
+	}
+	if !claims.IsImpersonation || claims.ActingUserId != userID || claims.UserId != userID || claims.TenantId != 42 || claims.TokenId != out.TokenID {
+		t.Fatalf("unexpected impersonation claims: %#v", claims)
+	}
+	if sessionItem, err := svc.sessionStore.Get(ctx, out.TokenID); err != nil || sessionItem == nil || sessionItem.TenantId != 42 || sessionItem.UserId != userID {
+		t.Fatalf("expected impersonation session in target tenant, session=%#v err=%v", sessionItem, err)
+	}
+	if len(roleSvc.tenantIDs) != 1 || roleSvc.tenantIDs[0] != 42 {
+		t.Fatalf("expected role cache prime under target tenant, got %v", roleSvc.tenantIDs)
+	}
+	if len(roleSvc.contexts) != 1 || roleSvc.contexts[0] == nil {
+		t.Fatalf("expected impersonation business context, got %#v", roleSvc.contexts)
+	}
+	if !roleSvc.contexts[0].IsImpersonation ||
+		!roleSvc.contexts[0].ActingAsTenant ||
+		roleSvc.contexts[0].ActingUserId != userID ||
+		roleSvc.contexts[0].TenantId != 42 {
+		t.Fatalf("unexpected impersonation business context: %#v", roleSvc.contexts[0])
+	}
+
+	if err = svc.RevokeImpersonationToken(ctx, "Bearer "+out.AccessToken, 42); err != nil {
+		t.Fatalf("revoke impersonation token: %v", err)
+	}
+	if _, err = svc.ParseToken(ctx, out.AccessToken); !bizerr.Is(err, CodeAuthTokenInvalid) {
+		t.Fatalf("expected revoked impersonation token to be invalid, got %v", err)
+	}
+}
+
+// TestRevokeImpersonationTokenRejectsNonImpersonationToken verifies plugins
+// cannot use the impersonation revoke path to tear down ordinary sessions.
+func TestRevokeImpersonationTokenRejectsNonImpersonationToken(t *testing.T) {
+	ctx := context.Background()
+	svc := newTenantAuthTestService()
+	user := &entity.SysUser{Id: 101, Username: "tenant-user", Status: 1}
+	accessToken, _, _, err := svc.generateTokenPair(ctx, user, 42)
+	if err != nil {
+		t.Fatalf("generate tenant token: %v", err)
+	}
+	if err = svc.RevokeImpersonationToken(ctx, accessToken, 42); !bizerr.Is(err, CodeAuthTokenInvalid) {
+		t.Fatalf("expected non-impersonation revoke to be rejected, got %v", err)
 	}
 }
 
@@ -766,12 +832,18 @@ func (roleTestService) InvalidateTokenAccessContext(context.Context, string) {}
 // snapshots.
 type trackingRoleTestService struct {
 	tenantIDs []int
+	contexts  []*model.Context
 }
 
 // PrimeTokenAccessContext records the current tenant and returns an empty
 // access snapshot.
 func (s *trackingRoleTestService) PrimeTokenAccessContext(ctx context.Context, _ string, _ int) (*role.UserAccessContext, error) {
 	s.tenantIDs = append(s.tenantIDs, datascope.CurrentTenantID(ctx))
+	if businessCtx, ok := ctx.Value(bizctx.ContextKey).(*model.Context); ok {
+		s.contexts = append(s.contexts, businessCtx)
+	} else {
+		s.contexts = append(s.contexts, nil)
+	}
 	return &role.UserAccessContext{}, nil
 }
 
