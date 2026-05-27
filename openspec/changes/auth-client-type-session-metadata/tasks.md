@@ -99,6 +99,7 @@
 ## Feedback
 
 - [x] **FB-1**: 将`013-auth-client-type-session-metadata.sql`整理回原始在线会话 SQL 数据文件
+- [x] **FB-2**: 修复在线会话`client_type`必填后 CI mock 数据初始化失败
 
 ### Feedback 执行记录
 
@@ -113,3 +114,22 @@
 - 测试策略：纯项目治理类反馈，不改变运行时行为，不新增单元测试或 E2E；使用 OpenSpec 严格校验、SQL 静态检索、文件存在性检查和格式检查验证。
 - 已读取规则：`AGENTS.md`、`.agents/rules/openspec.md`、`.agents/rules/documentation.md`、`.agents/rules/architecture.md`、`.agents/rules/database.md`、`.agents/rules/cache-consistency.md`、`.agents/rules/data-permission.md`、`.agents/rules/testing.md`、`.agents/rules/i18n.md`、`.agents/rules/dev-tooling.md`。
 - 验证记录：`rg -n "client_type|auth-client-type-session-metadata" apps/lina-core/manifest/sql`确认`client_type`仅在`004-online-session.sql`中声明且无`013`文件引用；`ls apps/lina-core/manifest/sql`确认`013-auth-client-type-session-metadata.sql`不存在。
+
+#### FB-2：修复 CI mock 数据初始化失败
+
+- 根因确认：GitHub Actions run `26513008846`在 Host-only build smoke 阶段执行 mock 数据时失败，PostgreSQL 报错`null value in column "client_type" of relation "sys_online_session" violates not-null constraint`。`sys_online_session.client_type`已在源码 SQL 中改为`NOT NULL`，但宿主 mock 数据、打包 mock 数据、打包建表 SQL 和部分测试 fixture 仍按旧列清单写入在线会话，导致初始化或测试插入时缺少必填字段。
+- 修复内容：为宿主`manifest/sql/mock-data/004-online-sessions.sql`和`linapro-monitor-online`插件 mock 数据补齐`client_type`列和值；Web/桌面浏览器演示会话使用`web`，iOS 演示会话使用`mobile`。同步修复`cluster_multiprocess_test.go`和`linapro-tenant-core` E2E support 中直接插入`sys_online_session`的 fixture，避免后续测试路径继续触发同一 NOT NULL 约束失败。运行`make pack.assets`确认忽略的`internal/packed/manifest`可由源码 manifest 重新生成。
+- `i18n`影响：无运行时用户可见文案、API 文档源文本、错误消息、插件清单、语言包或翻译缓存变更；仅补齐 mock/fixture 数据字段。
+- 缓存一致性影响：无缓存 key、payload、失效、刷新、跨实例同步或故障降级策略变更；仅影响初始化演示数据和测试 fixture 写入。
+- 数据权限影响：不新增接口或数据可见性边界；`linapro-tenant-core` fixture 保持原有 tenant A/B 隔离断言，只是补齐同一行的必填`client_type`字段。
+- 开发工具跨平台影响：未修改 Makefile、脚本、CI 或`linactl`实现；使用既有跨平台`make pack.assets`、`make init`和`make mock`入口验证。
+- 测试策略：这是可执行初始化数据修复，使用真实 PostgreSQL 隔离容器跑 CI 同类`make init`和`make mock`路径复现验证；另用 Go 包编译、E2E TypeScript 编译、E2E 结构校验、静态检索、OpenSpec 严格校验和格式检查覆盖相关回归。
+- 已读取规则：`AGENTS.md`、`.agents/rules/openspec.md`、`.agents/rules/documentation.md`、`.agents/rules/architecture.md`、`.agents/rules/database.md`、`.agents/rules/cache-consistency.md`、`.agents/rules/data-permission.md`、`.agents/rules/testing.md`、`.agents/rules/i18n.md`、`.agents/rules/dev-tooling.md`、`.agents/rules/backend-go.md`、`.agents/rules/plugin.md`；Go 后端测试 fixture 修复同步使用`goframe-v2`技能。
+- 验证记录：`make pack.assets`通过；临时 PostgreSQL 容器`linapro-ci-fb2-postgres`上以隔离`GF_GCFG_PATH`执行`make init confirm=init rebuild=true`通过，随后`make mock confirm=mock`通过，确认`004-online-sessions.sql`不再触发`client_type`非空约束失败；`cd apps/lina-core && go test ./internal/service/cluster -run TestClusterTwoHostProcessesSharePostgreSQL -count=1`通过包编译并按缺少`LINA_TEST_PGSQL_LINK`/`LINA_TEST_REDIS_ADDR`跳过真实多进程测试；`pnpm -C hack/tests exec tsc --noEmit`通过；`pnpm -C hack/tests test:validate`通过，校验 238 个 E2E 文件；`openspec validate auth-client-type-session-metadata --strict`通过；`git diff --check -- apps/lina-core/internal/service/cluster/cluster_multiprocess_test.go apps/lina-core/manifest/sql/mock-data/004-online-sessions.sql openspec/changes/auth-client-type-session-metadata/tasks.md`和`git -C apps/lina-plugins diff --check -- linapro-monitor-online/manifest/sql/mock-data/001-linapro-monitor-online-mock-data.sql linapro-tenant-core/hack/tests/support/linapro-tenant-core-scenarios.ts`通过；静态检索`rg -n -U -P 'INSERT INTO sys_online_session\s*\((?:(?!\)).)*\)' apps/lina-core apps/lina-plugins hack --glob '!**/node_modules/**' --glob '!**/dist/**' --glob '!**/.git/**'`确认一行式 fixture 插入均包含`client_type`，并通过上下文检索确认宿主与插件 mock SQL 的每段在线会话插入均包含`"client_type"`。
+
+##### FB-2 Lina 审查记录
+
+- 审查范围：反馈级，文件包括`apps/lina-core/manifest/sql/mock-data/004-online-sessions.sql`、`apps/lina-core/internal/service/cluster/cluster_multiprocess_test.go`、`apps/lina-plugins/linapro-monitor-online/manifest/sql/mock-data/001-linapro-monitor-online-mock-data.sql`、`apps/lina-plugins/linapro-tenant-core/hack/tests/support/linapro-tenant-core-scenarios.ts`和本`tasks.md`记录；`internal/packed/manifest`为`.gitignore`忽略的生成资源，已通过`make pack.assets`验证由源码 manifest 重新生成，不纳入提交范围。
+- 已读取规则文件：`AGENTS.md`、`.agents/rules/openspec.md`、`.agents/rules/documentation.md`、`.agents/rules/architecture.md`、`.agents/rules/backend-go.md`、`.agents/rules/database.md`、`.agents/rules/cache-consistency.md`、`.agents/rules/data-permission.md`、`.agents/rules/plugin.md`、`.agents/rules/testing.md`、`.agents/rules/i18n.md`、`.agents/rules/dev-tooling.md`；技能：`lina-feedback`、`lina-review`、`goframe-v2`、`lina-e2e`。
+- 规则域结论：OpenSpec 反馈先记录根因再修复，任务已标记完成且有验证证据；SQL mock 数据与测试 fixture 均补齐`client_type`，不新增自增主键写入或非幂等 DML；Go 后端只改测试 fixture，包编译门禁通过；插件目录未发现本地`AGENTS.md`，按顶层插件/测试规则执行；E2E support TypeScript 编译和结构校验通过，无新增 E2E 文件编号影响；无运行时 UI/API 文案、缓存、数据权限或开发工具实现变更。
+- 验证证据：复查`openspec validate auth-client-type-session-metadata --strict`通过；复查`git diff --check`覆盖宿主和插件本次文件通过；审查 diff 未发现旧式`sys_online_session`插入缺少`client_type`的残留。严重问题 0，警告 0。
