@@ -100,6 +100,7 @@
 
 - [x] **FB-1**: 将`013-auth-client-type-session-metadata.sql`整理回原始在线会话 SQL 数据文件
 - [x] **FB-2**: 修复在线会话`client_type`必填后 CI mock 数据初始化失败
+- [x] **FB-3**: 修复 CI 冒烟登录请求缺少必填`clientType`
 
 ### Feedback 执行记录
 
@@ -133,3 +134,22 @@
 - 已读取规则文件：`AGENTS.md`、`.agents/rules/openspec.md`、`.agents/rules/documentation.md`、`.agents/rules/architecture.md`、`.agents/rules/backend-go.md`、`.agents/rules/database.md`、`.agents/rules/cache-consistency.md`、`.agents/rules/data-permission.md`、`.agents/rules/plugin.md`、`.agents/rules/testing.md`、`.agents/rules/i18n.md`、`.agents/rules/dev-tooling.md`；技能：`lina-feedback`、`lina-review`、`goframe-v2`、`lina-e2e`。
 - 规则域结论：OpenSpec 反馈先记录根因再修复，任务已标记完成且有验证证据；SQL mock 数据与测试 fixture 均补齐`client_type`，不新增自增主键写入或非幂等 DML；Go 后端只改测试 fixture，包编译门禁通过；插件目录未发现本地`AGENTS.md`，按顶层插件/测试规则执行；E2E support TypeScript 编译和结构校验通过，无新增 E2E 文件编号影响；无运行时 UI/API 文案、缓存、数据权限或开发工具实现变更。
 - 验证证据：复查`openspec validate auth-client-type-session-metadata --strict`通过；复查`git diff --check`覆盖宿主和插件本次文件通过；审查 diff 未发现旧式`sys_online_session`插入缺少`client_type`的残留。严重问题 0，警告 0。
+
+#### FB-3：修复 CI 冒烟登录请求缺少`clientType`
+
+- 根因确认：GitHub Actions run `26515440723`中 Host-only build smoke 和 Redis cluster smoke 均已成功启动后端，但冒烟脚本仍按旧登录契约请求`/api/v1/auth/login`，请求体只有`username`和`password`。`LoginReq.clientType`已经按本变更改为必填，因此服务正确返回`validation.auth.login.clientType.required`，导致 smoke 失败。
+- 修复内容：在`.github/actions/host-only-artifact-smoke/action.yml`和`hack/tests/scripts/run-redis-cluster-smoke.sh`的登录请求体中显式传入`clientType:"web"`，让 CI smoke 与默认 Web 工作台登录契约保持一致。
+- `i18n`影响：无运行时用户可见文案、API 文档源文本、错误消息、插件清单、语言包或翻译缓存变更。
+- 缓存一致性影响：无缓存 key、payload、失效、刷新、跨实例同步或故障降级策略变更；Redis smoke 只是通过正确登录参数验证既有集群 session store 写入路径。
+- 数据权限影响：无新增接口、数据操作、租户边界或存在性暴露；仅修复 CI 登录请求参数。
+- 开发工具跨平台影响：修改 GitHub composite action 和 Bash smoke 脚本；它们属于 CI 专属 Linux 入口，不作为默认跨平台开发入口。Windows 命令 smoke 不受影响。
+- 测试策略：这是 CI 治理和运行时接口联动修复，不新增业务单元测试；使用静态检索、格式检查、OpenSpec 严格校验，并运行相关 Go smoke/编译门禁验证同一 Action 中其他失败项。
+- 已读取规则：`AGENTS.md`、`.agents/rules/openspec.md`、`.agents/rules/documentation.md`、`.agents/rules/architecture.md`、`.agents/rules/api-contract.md`、`.agents/rules/cache-consistency.md`、`.agents/rules/data-permission.md`、`.agents/rules/testing.md`、`.agents/rules/i18n.md`、`.agents/rules/dev-tooling.md`。
+- 验证记录：静态检索确认`.github/actions/host-only-artifact-smoke/action.yml`和`hack/tests/scripts/run-redis-cluster-smoke.sh`的登录 payload 均包含`clientType:"web"`；`openspec validate auth-client-type-session-metadata --strict`通过；`git diff --check`通过。关联 CI 中 plugin-full 失败项已在`consolidate-plugin-service-boundaries`的`FB-3`中继续修复和验证。
+
+##### FB-3 Lina 审查记录
+
+- 审查范围：反馈级，文件包括`.github/actions/host-only-artifact-smoke/action.yml`、`hack/tests/scripts/run-redis-cluster-smoke.sh`和本`tasks.md`记录；`git ls-files --others --exclude-standard`无未跟踪文件。
+- 已读取规则文件：`AGENTS.md`、`.agents/rules/openspec.md`、`.agents/rules/documentation.md`、`.agents/rules/architecture.md`、`.agents/rules/api-contract.md`、`.agents/rules/cache-consistency.md`、`.agents/rules/data-permission.md`、`.agents/rules/testing.md`、`.agents/rules/i18n.md`、`.agents/rules/dev-tooling.md`；技能：`lina-feedback`、`lina-review`。
+- 规则域结论：OpenSpec 反馈先记录根因再修复且任务完成；CI composite action 和 Bash smoke 属于 CI/Linux 专属入口，已记录跨平台边界；登录请求与必填`clientType`接口契约一致；无运行时 UI、API 文档源文本、语言包、缓存、数据权限或生产后端行为变更。
+- 验证证据：`openspec validate auth-client-type-session-metadata --strict`通过；静态检索确认两个 smoke 登录 payload 均包含`clientType:"web"`；`git diff --check`通过。严重问题 0，警告 0。
