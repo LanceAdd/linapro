@@ -18,6 +18,7 @@ import (
 	"lina-core/internal/service/locker"
 	"lina-core/internal/service/plugin/internal/catalog"
 	"lina-core/internal/service/session"
+	_ "lina-core/pkg/dbdriver"
 	"lina-core/pkg/plugin/capability"
 	"lina-core/pkg/plugin/capability/contract"
 	orgcapsvc "lina-core/pkg/plugin/capability/orgcap"

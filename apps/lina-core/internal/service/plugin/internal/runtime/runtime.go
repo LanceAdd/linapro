@@ -17,7 +17,7 @@ import (
 	"lina-core/internal/service/plugin/internal/frontend"
 	"lina-core/internal/service/plugin/internal/lifecycle"
 	"lina-core/internal/service/plugin/internal/openapi"
-	"lina-core/internal/service/pluginruntimecache"
+	"lina-core/internal/service/plugin/runtimecache"
 	"lina-core/internal/service/session"
 	bridgecontract "lina-core/pkg/plugin/pluginbridge/contract"
 	"lina-core/pkg/plugin/pluginhost"
@@ -73,8 +73,8 @@ type UploadSizeProvider interface {
 
 // UserContextSetter injects authenticated user information into the request context.
 type UserContextSetter interface {
-	// SetUser populates the context with the resolved token and user identity fields.
-	SetUser(ctx context.Context, tokenID string, userID int, username string, status int)
+	// SetUser populates the context with the resolved token, user identity, and client type fields.
+	SetUser(ctx context.Context, tokenID string, userID int, username string, status int, clientType string)
 	// SetTenant populates the resolved request tenant.
 	SetTenant(ctx context.Context, tenantID int)
 	// SetUserAccess populates cached access-snapshot fields for downstream plugin integrations.
@@ -382,9 +382,9 @@ type serviceImpl struct {
 	// dynamic lifecycle side effects.
 	dependencyValidator DependencyValidator
 	// reconcilerRevisionObserved records the reconciler revision consumed by this runtime service.
-	reconcilerRevisionObserved *pluginruntimecache.ObservedRevision
+	reconcilerRevisionObserved *runtimecache.ObservedRevision
 	// reconcilerRevisionCtrl coordinates cluster-wide dynamic-plugin reconciler wake-up.
-	reconcilerRevisionCtrl *pluginruntimecache.Controller
+	reconcilerRevisionCtrl *runtimecache.Controller
 	// reconcilerSafetyMu protects the last full-sweep timestamp.
 	reconcilerSafetyMu sync.Mutex
 	// lastReconcilerSweepAt records the last successful background full-scan pass.
@@ -419,7 +419,7 @@ func New(
 		openapiSvc:                 openapiSvc,
 		sessionStore:               session.NewDBStore(),
 		reconcilerLockSvc:          reconcilerLockSvc,
-		reconcilerRevisionObserved: pluginruntimecache.NewObservedRevision(),
+		reconcilerRevisionObserved: runtimecache.NewObservedRevision(),
 		i18nSvc:                    i18nSvc,
 	}
 }

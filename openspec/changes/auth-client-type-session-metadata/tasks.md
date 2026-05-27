@@ -1,0 +1,115 @@
+## 1. 规范和影响确认
+
+- [x] 1.1 读取并记录命中的 OpenSpec、文档、架构、API、后端 Go、数据库、缓存一致性、数据权限、插件、前端 UI、测试和 i18n 规则。
+- [x] 1.2 确认`clientType`仅表示用户会话客户端，枚举值只包含`web`、`mobile`、`desktop`、`cli`。
+- [x] 1.3 记录破坏式变更范围：登录请求必须显式传入合法`clientType`，后端认证内核不再隐式补`web`。
+
+## 2. 认证模型实现
+
+- [x] 2.1 在认证服务中新增`ClientType`命名类型、常量、解析校验函数和结构化错误码。
+- [x] 2.2 将`ClientType`写入`LoginInput`、`preTokenRecord`、JWT claims、租户令牌签发、租户切换、刷新和 impersonation 令牌路径。
+- [x] 2.3 将`Logout`改为接收`LogoutInput`并从当前业务上下文传入`ClientType`，移除退出 Hook 中的硬编码`web`。
+- [x] 2.4 更新认证中间件和`bizctx`，把 claims 中的`ClientType`注入请求业务上下文。
+
+## 3. 会话存储和插件投影
+
+- [x] 3.1 更新宿主`004-online-session.sql`建表源，使`sys_online_session.client_type`成为必填投影字段。
+- [x] 3.2 执行 DAO 生成流程并更新`sys_online_session`相关 DAO/DO/Entity 生成文件。
+- [x] 3.3 更新`session.Session`、DBStore、CoordinationStore Redis hot state 和在线会话列表投影，保证`ClientType`随会话写入和读取。
+- [x] 3.4 更新插件 session contract、hostservices adapter 和`linapro-monitor-online`在线用户列表 DTO/投影，返回`clientType`。
+
+## 4. API、前端和 i18n
+
+- [x] 4.1 更新`LoginReq`，新增必填`clientType`字段和 OpenAPI 文档说明。
+- [x] 4.2 更新默认 Web 前端登录 API 适配层，显式传入`clientType=web`。
+- [x] 4.3 同步宿主`zh-CN` apidoc 翻译资源，确认无新增前端用户可见文案。
+
+## 5. 测试和验证
+
+- [x] 5.1 新增或更新认证单元测试，覆盖合法/非法`clientType`、登录失败 Hook、二阶段租户选择、刷新继承、租户切换继承和退出 Hook。
+- [x] 5.2 新增或更新会话存储与 hostservices 投影测试，覆盖 DB/Redis hot state/session contract 中的`ClientType`。
+- [x] 5.3 运行 Go 验证：`cd apps/lina-core && go test ./internal/service/auth ./internal/service/session ./internal/service/plugin/internal/hostservices -count=1`。
+- [x] 5.4 涉及 API/路由绑定后运行`cd apps/lina-core && go test ./internal/cmd -count=1`。
+- [x] 5.5 运行前端类型检查、OpenSpec 严格校验、静态检索和格式检查。
+
+## 6. 执行记录
+
+- [x] 6.1 记录 i18n、缓存一致性、数据权限、插件边界、前端 UI、开发工具跨平台和测试影响分析。
+- [x] 6.2 记录 SQL 幂等性、数据分类、索引判断、DAO 生成和编译门禁结果。
+- [x] 6.3 完成实现和验证后执行`lina-review`审查。
+
+## 执行记录
+
+### 规范和范围确认
+
+- 已按`AGENTS.md`读取本次命中的规则：OpenSpec、文档、架构、API、后端 Go、数据库、缓存一致性、数据权限、插件、前端 UI、测试和`i18n`。Go 后端实现同步使用`goframe-v2`技能；实现任务使用`openspec-apply-change`流程。
+- 根因确认：认证 Hook 的`clientType`当前只在登录失败、登录成功、退出成功 payload 组装处硬编码为`web`，且插件分发层对空值继续补`web`；该字段未进入登录输入、`pre_token`、JWT claims、在线会话、Redis hot state 或`bizCtx`，导致`Logout`无法从当前会话事实源读取客户端类型。
+- 设计范围确认：`clientType`只表示用户会话客户端，枚举值限定为`web`、`mobile`、`desktop`、`cli`；`service`和`plugin`属于未来独立的主体类型、授权方式或 actor 语义，不进入`ClientType`。
+- 破坏式变更确认：登录请求必须显式提交合法`clientType`；默认 Web 工作台由前端 API 适配层显式传入`web`，后端认证内核、插件 Hook 分发层和退出逻辑均不再隐式补默认值。
+
+### 实现记录
+
+- 认证模型：在`pkg/authtoken`新增共享`ClientType`命名类型、`web/mobile/desktop/cli`常量和基础校验函数；`auth`服务复用该类型并通过`CodeAuthClientTypeInvalid`返回结构化错误。`plugin`、`service`和空值均被拒绝。
+- 生命周期传递：`ClientType`已进入`LoginInput`、`preTokenRecord`、JWT claims、`IssueTenantToken`、`ReissueTenantToken`、`Refresh`和 impersonation 签发路径；impersonation 从当前`bizCtx.ClientType`继承用户会话来源，缺少认证上下文时拒绝签发。
+- 退出路径：`Logout`改为接收`LogoutInput`，控制器从当前`bizCtx`传入`ClientType`，退出 Hook 使用该事实源，不再硬编码`web`。
+- 请求上下文：认证中间件从 JWT claims 注入`bizctx.SetUser(..., clientType)`，`model.Context`保留`ClientType`供控制器、动态插件路由和 host service 适配使用；动态插件路由解析 JWT 时也通过`pkg/authtoken.ParseClientType`拒绝空值、`plugin`和`service`。
+- 会话投影：`session.Session`、DBStore、Redis session hot state payload、`sys_online_session` DAO/DO/Entity 均新增`ClientType/client_type`字段；读写、分页列表和 scoped 列表均随既有投影返回，不新增查询。
+- 插件契约：`pkg/plugin/capability/contract.Session`、hostservices adapter 和`linapro-monitor-online`在线用户列表 DTO/控制器投影均返回`clientType`；插件目录无本地`AGENTS.md`，`plugin.yaml`启用`i18n`，已维护插件自身`zh-CN` apidoc 翻译。
+- API 与前端：`LoginReq.clientType`为必填字段；默认 Web 前端登录 API 适配层显式提交`clientType=web`，没有新增前端页面、交互或运行时可见文案。
+
+### 影响分析
+
+- `i18n`：宿主新增错误键、校验键和`LoginReq.clientType`接口文档翻译；同步维护`manifest/i18n/zh-CN/apidoc/core-api-auth.json`与打包副本。英文 apidoc 按规则保持源文本和空占位策略。在线用户插件启用`i18n`，已补充插件自身`zh-CN` apidoc 翻译；无新增前端运行时文案。
+- 缓存一致性：Redis session hot state 仅扩展 payload 字段，权威来源仍为登录时认证输入和 JWT/session 投影；key 维度、TTL、失效路径、跨实例共享 KV 和故障降级策略不变。`pre_token`继续通过共享 KV 单次消费，额外保存`ClientType`。
+- 数据权限：没有新增数据读取或写入边界；在线用户列表仍走`sys_online_session`投影、tenantcap 和 datascope 过滤，新增字段随同一行投影返回，不通过逐项补查暴露额外存在性。
+- 插件边界：插件只接收宿主发布的 session contract 投影字段，不依赖宿主 DAO/DO/Entity 或内部缓存结构；动态插件路由校验 JWT claims 的`clientType`后再透传到用户上下文。
+- 前端 UI：仅修改 Web 登录 API 适配层请求体，未改页面、表单、按钮、路由、布局或用户可见交互，因此无需新增 E2E；通过类型检查覆盖调用契约。
+- 开发工具跨平台：没有修改 Makefile、脚本、CI 或`linactl`；仅使用既有`make dao`生成流程。命中开发工具规则的影响为无新增跨平台入口。
+- DI 来源：本次没有新增运行期服务依赖、构造函数参数或独立服务图；只扩展既有接口参数、DTO、claims 和投影字段。缓存敏感服务仍复用启动期传入的`sessionStore`、`kvCacheSvc`、`roleSvc`和`tenantSvc`。
+- 性能：`clientType`随登录、会话写入、会话读取、Redis hot state 和在线用户列表既有查询路径读写，不新增数据库查询、远程调用或前端瀑布式请求；当前没有按`client_type`过滤或排序需求。
+
+### SQL、生成和验证记录
+
+- SQL：更新`004-online-session.sql`建表源，直接在`sys_online_session`中声明`"client_type" VARCHAR(32) NOT NULL`和列注释；按破坏式设计不保留独立追加迁移、不设置默认值、不回填历史数据。`CREATE TABLE IF NOT EXISTS`和列注释保持初始化脚本可重复执行。
+- 数据分类：本次 SQL 仅包含 DDL 和注释，无 Seed DML、Mock 数据、自增主键写入或软删除语义变化。
+- 索引判断：本次没有新增按`client_type`筛选、排序、聚合或关联查询路径，因此不新增低价值索引；未来出现在线用户按客户端类型筛选时再按实际查询增加组合索引。
+- DAO 生成：首次`make init confirm=init`因代码已引用未生成的`do.SysOnlineSession.ClientType`失败；本地开发库存在旧行且本机无`psql`，因此使用一次性本地 schema 修复辅助流程让开发库具备该列后执行`cd apps/lina-core && make dao`成功。临时本地修复未提交，提交的迁移仍保持破坏式无默认/无回填。
+- 生成结果：`sys_online_session`相关 DAO/DO/Entity 已通过`make dao`更新；`sys_kv_cache.ValueBytes`在同次生成中回到实际`BYTEA`对应的`[]byte`类型，既有 kvcache 代码按该类型使用。
+- 验证通过：
+  - `cd apps/lina-core && go test ./internal/service/auth ./internal/service/session ./internal/service/plugin/internal/hostservices ./internal/service/apidoc -count=1`
+  - `cd apps/lina-core && go test ./pkg/authtoken ./internal/service/plugin/internal/runtime ./internal/service/kvcache -count=1`
+  - `cd apps/lina-core && go test ./internal/cmd -count=1`
+  - 使用临时`go.work`包含`apps/lina-core`和`apps/lina-plugins/linapro-monitor-online`后执行`GOWORK=<tmp>/go.work go test ./... -count=1`
+  - `cd apps/lina-vben && pnpm -F @lina/web-antd typecheck`
+  - `openspec validate auth-client-type-session-metadata --strict`
+  - 静态检索生产路径确认不存在`ClientType: "web"`、`input.ClientType = "web"`或`clientType = "web"`后端兜底硬编码；`plugin/service`仅出现在拒绝用例中。
+  - `git diff --check`覆盖本次相关文件，未发现空白格式问题。
+
+### Lina 审查记录
+
+- 变更：`auth-client-type-session-metadata`。
+- 范围：全部变更。审查范围来源为`git status --short`、`git ls-files --others --exclude-standard`、`git -C apps/lina-plugins status --short`和本变更任务上下文；审查文件数 53。当前工作区存在大量`consolidate-plugin-service-boundaries`等无关既有变更，已排除在本次审查结论之外。
+- 已读取规则文件：`AGENTS.md`、`.agents/rules/documentation.md`、`.agents/rules/openspec.md`、`.agents/rules/architecture.md`、`.agents/rules/api-contract.md`、`.agents/rules/backend-go.md`、`.agents/rules/database.md`、`.agents/rules/cache-consistency.md`、`.agents/rules/data-permission.md`、`.agents/rules/plugin.md`、`.agents/rules/frontend-ui.md`、`.agents/rules/testing.md`、`.agents/rules/i18n.md`、`.agents/rules/dev-tooling.md`。使用技能：`lina-review`、`goframe-v2`、`openspec-apply-change`。
+- 审查发现：初审发现动态插件路由的 JWT 解析路径读取`clientType`后未校验，已修复为复用`pkg/authtoken.ParseClientType`，并补充拒绝空值、`plugin`、`service`的单元测试。复查未发现阻塞问题。
+- 规则域结论：OpenSpec、文档、架构、API、后端 Go、数据库、缓存一致性、数据权限、插件、前端 UI、测试、`i18n`和开发工具跨平台均通过。无新增运行期依赖；无新增前端可见 UI；无 E2E 必要性，原因是默认 Web 前端仅改变 API 适配层请求体且已有类型检查覆盖。
+- 额外生成影响：`make dao`同次更新`sys_kv_cache.ValueBytes`为`[]byte`，已通过`cd apps/lina-core && go test ./internal/service/kvcache -count=1`覆盖。
+- 验证证据：所有“SQL、生成和验证记录”中的命令均已在当前工作区重跑通过。`openspec validate auth-client-type-session-metadata --strict`通过；静态扫描确认生产路径无后端`web`兜底硬编码，且`service/plugin`未进入`ClientType`枚举。
+- 摘要：严重 0，警告 0。剩余风险：提交的破坏式建表源不兼容已有非空旧表数据，符合“不考虑兼容性”的用户要求和设计记录。
+
+## Feedback
+
+- [x] **FB-1**: 将`013-auth-client-type-session-metadata.sql`整理回原始在线会话 SQL 数据文件
+
+### Feedback 执行记录
+
+#### FB-1：整理在线会话 SQL 文件
+
+- 根因确认：`sys_online_session.client_type`已经同步写入`004-online-session.sql`建表源，但独立的`013-auth-client-type-session-metadata.sql`仍残留，导致同一破坏式 schema 变更同时存在原始建表源和追加迁移两种表达，不符合用户要求的“修改到原来的 SQL 数据文件中”。
+- 修复内容：删除`apps/lina-core/manifest/sql/013-auth-client-type-session-metadata.sql`，保留`apps/lina-core/manifest/sql/004-online-session.sql`中的`client_type`字段和列注释；同步更新`proposal.md`、`design.md`和本任务记录中关于 SQL 文件形态的描述。
+- `i18n`影响：无运行时用户可见文案、API 文档源文本、错误消息、插件清单、语言包或翻译缓存变更。
+- 缓存一致性影响：无缓存 key、payload、失效、刷新、跨实例同步或故障降级策略变更。
+- 数据权限影响：无新增或修改数据读写接口、过滤条件、租户边界、存在性暴露或插件宿主数据访问路径。
+- 开发工具跨平台影响：未修改 Makefile、脚本、CI、`linactl`或代码生成入口；本次仅整理 SQL 和 OpenSpec 文档。
+- 测试策略：纯项目治理类反馈，不改变运行时行为，不新增单元测试或 E2E；使用 OpenSpec 严格校验、SQL 静态检索、文件存在性检查和格式检查验证。
+- 已读取规则：`AGENTS.md`、`.agents/rules/openspec.md`、`.agents/rules/documentation.md`、`.agents/rules/architecture.md`、`.agents/rules/database.md`、`.agents/rules/cache-consistency.md`、`.agents/rules/data-permission.md`、`.agents/rules/testing.md`、`.agents/rules/i18n.md`、`.agents/rules/dev-tooling.md`。
+- 验证记录：`rg -n "client_type|auth-client-type-session-metadata" apps/lina-core/manifest/sql`确认`client_type`仅在`004-online-session.sql`中声明且无`013`文件引用；`ls apps/lina-core/manifest/sql`确认`013-auth-client-type-session-metadata.sql`不存在。

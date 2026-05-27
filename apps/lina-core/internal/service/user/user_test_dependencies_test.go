@@ -6,6 +6,7 @@ package user
 import (
 	"context"
 
+	"lina-core/internal/service/apidoc"
 	"lina-core/internal/service/auth"
 	"lina-core/internal/service/bizctx"
 	"lina-core/internal/service/cachecoord"
@@ -17,9 +18,9 @@ import (
 	"lina-core/internal/service/locker"
 	"lina-core/internal/service/notify"
 	pluginsvc "lina-core/internal/service/plugin"
-	"lina-core/internal/service/pluginhostservices"
 	"lina-core/internal/service/role"
 	"lina-core/internal/service/session"
+	capabilityhostconfig "lina-core/pkg/plugin/capability/hostconfig"
 	"lina-core/pkg/plugin/capability/orgcap"
 	tenantcapsvc "lina-core/pkg/plugin/capability/tenantcap"
 )
@@ -47,12 +48,14 @@ func newUserTestService(tenantRuntimes ...tenantcapsvc.ProviderRuntime) Service 
 	kvCacheSvc := kvcache.New()
 	authSvc := auth.New(configSvc, pluginSvc, orgCapSvc, roleSvc, tenantSvc, sessionStore, kvCacheSvc)
 	notifySvc := notify.New(tenantSvc)
-	capabilities, err := pluginhostservices.New(
-		nil,
+	apiDocSvc := apidoc.New(configSvc, bizCtxSvc, i18nSvc, pluginSvc)
+	hostConfigSvc := capabilityhostconfig.New(configSvc)
+	capabilities, err := pluginsvc.NewHostServices(
+		apiDocSvc,
 		authSvc,
 		nil,
 		bizCtxSvc,
-		configSvc,
+		hostConfigSvc,
 		scopeSvc,
 		i18nSvc,
 		pluginSvc,

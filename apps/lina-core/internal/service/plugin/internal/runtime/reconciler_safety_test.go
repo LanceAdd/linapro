@@ -22,7 +22,7 @@ import (
 	"lina-core/internal/service/locker"
 	"lina-core/internal/service/plugin/internal/catalog"
 	"lina-core/internal/service/plugin/internal/lifecycle"
-	"lina-core/internal/service/pluginruntimecache"
+	"lina-core/internal/service/plugin/runtimecache"
 	"lina-core/pkg/plugin/pluginbridge/protocol"
 )
 
@@ -241,7 +241,7 @@ func TestRunReconcilerTickSafelyRecoversPanic(t *testing.T) {
 		topology: reconcilerRevisionTestTopology{cluster: true, primary: true, nodeID: "node-primary"},
 		reconcilerRevisionCtrl: newTestReconcilerRevisionController(
 			&panicReconcilerRevisionCacheCoord{},
-			pluginruntimecache.NewObservedRevision(),
+			runtimecache.NewObservedRevision(),
 		),
 	}
 	service.runReconcilerTickSafely(context.Background())
@@ -338,7 +338,7 @@ func newRuntimeSafetyServices() *runtimeSafetyServices {
 	runtimeSvc.SetTopology(topology)
 	runtimeSvc.reconcilerRevisionCtrl = newTestReconcilerRevisionController(
 		&reconcilerRevisionCacheCoord{},
-		pluginruntimecache.NewObservedRevision(),
+		runtimecache.NewObservedRevision(),
 	)
 	return &runtimeSafetyServices{
 		Catalog: catalogSvc,
