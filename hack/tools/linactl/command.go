@@ -27,6 +27,7 @@ func commandRegistry() map[string]commandSpec {
 		{Name: "build", Description: "Build frontend assets, plugin artifacts, and host binaries.", Usage: "linactl build [plugins=auto|0|1] [platforms=linux/amd64] [verbose=1]", Run: runBuild},
 		{Name: "image", Description: "Build the production Docker image.", Usage: "linactl image [tag=v0.6.0] [push=1]", Run: runImage},
 		{Name: "image.build", Description: "Stage image build artifacts without invoking Docker build.", Usage: "linactl image.build [tag=v0.6.0]", Run: runImageBuild},
+		{Name: "version", Description: "Update framework.version metadata and README image cache keys.", Usage: "linactl version to=v0.6.0", Run: runVersion},
 		{Name: "release.tag.check", Description: "Verify a release tag matches framework.version metadata.", Usage: "linactl release.tag.check [tag=v0.6.0]", Run: runReleaseTagCheck},
 		{Name: "env.check", Description: "Check local development tool versions.", Usage: "linactl env.check", Run: runEnvCheck},
 		{Name: "env.setup", Description: "Install frontend dependencies and Playwright browsers.", Usage: "linactl env.setup", Run: runEnvSetup},

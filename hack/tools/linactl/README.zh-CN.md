@@ -17,6 +17,7 @@ go run . init confirm=init
 go run . tidy
 go run . build platforms=linux/amd64,linux/arm64
 go run . image tag=v0.2.0 push=0
+go run . version to=v0.2.0
 go run . release.tag.check tag=v0.2.0
 go run . release.tag.check print-version=1
 ```
@@ -33,6 +34,7 @@ make.cmd plugins.status
 make.cmd i18n.check
 make.cmd init confirm=init
 make.cmd tidy
+make.cmd version to=v0.2.0
 make.cmd release.tag.check tag=v0.2.0
 ```
 
@@ -43,6 +45,7 @@ make.cmd release.tag.check tag=v0.2.0
 .\make.cmd status
 .\make.cmd pack.assets
 .\make.cmd i18n.check
+.\make.cmd version to=v0.2.0
 .\make.cmd release.tag.check tag=v0.2.0
 ```
 
@@ -56,8 +59,9 @@ make.cmd release.tag.check tag=v0.2.0
 | `rebuild` | `rebuild=true` | 在`init`时重建配置中的数据库。 |
 | `platforms` | `platforms=linux/amd64,linux/arm64` | 指定构建目标平台。 |
 | `plugins` | `plugins=0` | 覆盖构建、开发、镜像和 Go 测试命令的自动插件完整模式探测。 |
-| `tag` | `tag=v0.2.0` | 指定 `release.tag.check` 校验的 release tag。 |
-| `print-version` | `print-version=1` | 输出已校验的 `framework.version`，供发布自动化使用。 |
+| `to` | `to=v0.2.0` | 指定`version`写入的框架版本号。 |
+| `tag` | `tag=v0.2.0` | 指定`release.tag.check`校验的 release tag。 |
+| `print-version` | `print-version=1` | 输出已校验的`framework.version`，供发布自动化使用。 |
 | `p` | `p=linapro-tenant-core` | 为 Wasm 构建或插件工作区管理命令选择单个插件。 |
 | `plugin-dir` | `plugin_dir=/path/to/plugin` | 从显式源码目录构建单个动态插件产物。 |
 | `out` | `out=temp/output` | 指定动态插件产物输出目录；相对路径按仓库根目录解析。 |
@@ -202,9 +206,18 @@ make agents.md.unlink agent=claude-code              # 移除 AGENTS.md 软链
 
 `agents.skills.*` 子命令的行为与原 `skills.*` 完全一致（同一注册表、同一状态机、同一 TTY/CI 行为），仅命令名称变化。
 
+## 版本元数据
+
+`version`会更新`apps/lina-core/manifest/config/metadata.yaml`中的`framework.version`，并为根目录`README`图片地址刷新`v=<version>`缓存键。
+
+```bash
+make.cmd version to=v0.2.0
+make version to=v0.2.0
+```
+
 ## Release Tag 校验
 
-`release.tag.check` 会读取 `apps/lina-core/manifest/config/metadata.yaml`，并校验 release tag 与 `framework.version` 完全一致。
+`release.tag.check`会读取`apps/lina-core/manifest/config/metadata.yaml`，并校验 release tag 与`framework.version`完全一致。
 
 ```bash
 make.cmd release.tag.check tag=v0.2.0

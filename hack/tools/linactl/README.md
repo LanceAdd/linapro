@@ -17,6 +17,7 @@ go run . init confirm=init
 go run . tidy
 go run . build platforms=linux/amd64,linux/arm64
 go run . image tag=v0.2.0 push=0
+go run . version to=v0.2.0
 go run . release.tag.check tag=v0.2.0
 go run . release.tag.check print-version=1
 ```
@@ -33,6 +34,7 @@ make.cmd plugins.status
 make.cmd i18n.check
 make.cmd init confirm=init
 make.cmd tidy
+make.cmd version to=v0.2.0
 make.cmd release.tag.check tag=v0.2.0
 ```
 
@@ -43,6 +45,7 @@ In PowerShell, run it with an explicit current-directory prefix:
 .\make.cmd status
 .\make.cmd pack.assets
 .\make.cmd i18n.check
+.\make.cmd version to=v0.2.0
 .\make.cmd release.tag.check tag=v0.2.0
 ```
 
@@ -56,6 +59,7 @@ In PowerShell, run it with an explicit current-directory prefix:
 | `rebuild` | `rebuild=true` | Rebuilds the configured database during `init`. |
 | `platforms` | `platforms=linux/amd64,linux/arm64` | Selects build target platforms. |
 | `plugins` | `plugins=0` | Overrides automatic plugin-full detection for build, dev, image, and Go test commands. |
+| `to` | `to=v0.2.0` | Selects the framework version written by `version`. |
 | `tag` | `tag=v0.2.0` | Selects the release tag checked by `release.tag.check`. |
 | `print-version` | `print-version=1` | Prints the validated `framework.version` for release automation. |
 | `p` | `p=linapro-tenant-core` | Selects one plugin for Wasm build or plugin workspace management commands. |
@@ -201,6 +205,15 @@ The old `make skills` / `make skills.link` / `make skills.unlink` targets and th
 | `linactl skills.unlink` | `linactl agents.skills.unlink` |
 
 The `agents.skills.*` subcommands behave identically to the previous `skills.*` commands (same registry, same status state machine, same TTY/CI behaviors). Only the command name changed.
+
+## Version Metadata
+
+`version` updates `apps/lina-core/manifest/config/metadata.yaml` `framework.version` and refreshes root `README` image URLs with a `v=<version>` cache key.
+
+```bash
+make.cmd version to=v0.2.0
+make version to=v0.2.0
+```
 
 ## Release Tag Check
 
