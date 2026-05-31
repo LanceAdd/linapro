@@ -88,3 +88,18 @@ func TestOperationBaseKeyIgnoresDynamicOperationID(t *testing.T) {
 		t.Fatalf("expected path-derived key, got %s", key)
 	}
 }
+
+// TestOperationBaseKeyPrefersStaticMarkerForPluginNamespace verifies source
+// plugin routes mounted below /x still use their DTO key when the host has one.
+func TestOperationBaseKeyPrefersStaticMarkerForPluginNamespace(t *testing.T) {
+	localizer := &openAPILocalizer{}
+	key := localizer.operationBaseKey("/x/linapro-org-core/api/v1/dept", "get", &goai.Operation{
+		XExtensions: goai.XExtensions{
+			openAPIOperationKeyExtension: "plugins.linapro_org_core.api.dept.v1.ListReq",
+		},
+		OperationID: "linapro_org_core_dept_list",
+	})
+	if key != "plugins.linapro_org_core.api.dept.v1.ListReq" {
+		t.Fatalf("expected source-plugin DTO key to win below /x namespace, got %s", key)
+	}
+}
