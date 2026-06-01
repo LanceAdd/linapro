@@ -6,6 +6,7 @@
 [![LinaPro License](https://img.shields.io/badge/license-apache%202.0-green.svg?style=flat&v=0.3.0)](https://github.com/linaproai/linapro)
 [![LinaPro Is Production Ready](https://img.shields.io/badge/production-ready-blue.svg?style=flat&v=0.3.0)](https://github.com/linaproai/linapro)
 
+
 [![Vue](https://img.shields.io/badge/Vue-3.x-42b883.svg?v=0.3.0)](https://vuejs.org/)
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg?v=0.3.0)](https://golang.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6.svg?v=0.3.0)](https://www.typescriptlang.org/)
@@ -29,7 +30,7 @@ Teams can skip the infrastructure-from-scratch phase and put AI to work driving 
 | Resource | URL |
 |----------|-----|
 | **Repository** | https://github.com/linaproai/linapro |
-| **Live Demo** | http://demo.linapro.ai/admin <br/>Username: `admin` <br/>Password: `admin123` |
+| **Live Demo** | https://demo.linapro.ai/admin <br/>Username: `admin` <br/>Password: `admin123` |
 | **Website** | https://linapro.ai/ |
 
 # Core Capabilities
