@@ -27,11 +27,13 @@ func TestPluginDemoDynamicRuntimeArtifactEmbedsReviewedAssets(t *testing.T) {
 
 	pluginDir := filepath.Join(repoRoot, "apps", "lina-plugins", "linapro-demo-dynamic")
 	requireOfficialPluginDemoDynamic(t, pluginDir)
+	prepareIgnoredPluginDemoDynamicRuntimeConfigForTest(t, pluginDir)
 	prepareTemporaryPluginGoWorkForTest(t, repoRoot)
 	expectedFrontendAssets := mustCollectSourceFrontendAssets(t, pluginDir)
 	expectedInstallSQLAssets := mustCollectSourceSQLAssets(t, pluginDir, "manifest/sql")
 	expectedUninstallSQLAssets := mustCollectSourceSQLAssets(t, pluginDir, "manifest/sql/uninstall")
 	expectedMockSQLAssets := mustCollectSourceSQLAssets(t, pluginDir, "manifest/sql/mock-data")
+	expectedManifestResourcePaths := mustCollectSourceManifestResourcePaths(t, pluginDir)
 
 	out, err := buildRuntimeWasmArtifactFromSource(pluginDir, t.TempDir())
 	if err != nil {
@@ -66,6 +68,9 @@ func TestPluginDemoDynamicRuntimeArtifactEmbedsReviewedAssets(t *testing.T) {
 	if metadata.SQLAssetCount != expectedSQLAssetCount || metadata.MockSQLAssetCount != len(expectedMockSQLAssets) {
 		t.Fatalf("expected sql/mock asset counts %d/%d, got %#v", expectedSQLAssetCount, len(expectedMockSQLAssets), metadata)
 	}
+	if metadata.ManifestResourceCount != len(expectedManifestResourcePaths) {
+		t.Fatalf("expected manifest resource count %d, got %#v", len(expectedManifestResourcePaths), metadata)
+	}
 
 	var frontendAssets []*frontendAsset
 	if err = json.Unmarshal(sections[pluginDynamicWasmSectionFrontend], &frontendAssets); err != nil {
@@ -90,6 +95,12 @@ func TestPluginDemoDynamicRuntimeArtifactEmbedsReviewedAssets(t *testing.T) {
 		t.Fatalf("expected mock sql section json to unmarshal, got error: %v", err)
 	}
 	assertSQLAssetsMatchSource(t, expectedMockSQLAssets, mockSQLAssets)
+
+	var manifestResources []*manifestResource
+	if err = json.Unmarshal(sections[pluginDynamicWasmSectionManifestResources], &manifestResources); err != nil {
+		t.Fatalf("expected manifest resources section json to unmarshal, got error: %v", err)
+	}
+	assertManifestResourcesMatchSource(t, expectedManifestResourcePaths, manifestResourcePaths(manifestResources))
 
 	var lifecycleContracts []*protocol.LifecycleContract
 	if err = json.Unmarshal(sections[pluginDynamicWasmSectionBackendLifecycle], &lifecycleContracts); err != nil {
@@ -199,6 +210,37 @@ func requireOfficialPluginDemoDynamic(t *testing.T, pluginDir string) {
 		}
 		t.Fatalf("stat dynamic demo plugin manifest failed: %v", err)
 	}
+}
+
+// prepareIgnoredPluginDemoDynamicRuntimeConfigForTest mirrors the local plugin
+// runtime config file that is intentionally ignored by git but required in the
+// packaged dynamic artifact contract.
+func prepareIgnoredPluginDemoDynamicRuntimeConfigForTest(t *testing.T, pluginDir string) {
+	t.Helper()
+
+	configPath := filepath.Join(pluginDir, "manifest", "config", "config.yaml")
+	if info, err := os.Stat(configPath); err == nil {
+		if info.IsDir() {
+			t.Fatalf("dynamic demo runtime config path is a directory: %s", configPath)
+		}
+		return
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat dynamic demo runtime config failed: %v", err)
+	}
+
+	templatePath := filepath.Join(pluginDir, "manifest", "config", "config.example.yaml")
+	content, err := os.ReadFile(templatePath)
+	if err != nil {
+		t.Fatalf("read dynamic demo runtime config template failed: %v", err)
+	}
+	if err = os.WriteFile(configPath, content, 0o644); err != nil {
+		t.Fatalf("write dynamic demo runtime config fixture failed: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
+			t.Fatalf("remove dynamic demo runtime config fixture failed: %v", err)
+		}
+	})
 }
 
 // assertGeneratedWasmDispatcherDidNotLeak verifies temporary generated source
@@ -420,6 +462,43 @@ func mustCollectSourceFrontendAssets(t *testing.T, pluginDir string) []*frontend
 	return assets
 }
 
+// mustCollectSourceManifestResourcePaths loads every file under plugin
+// manifest/ using the same path contract exposed by the runtime artifact's raw
+// manifest resource view.
+func mustCollectSourceManifestResourcePaths(t *testing.T, pluginDir string) []string {
+	t.Helper()
+
+	manifestDir := filepath.Join(pluginDir, "manifest")
+	paths := make([]string, 0)
+	if err := filepath.WalkDir(manifestDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry == nil {
+			return nil
+		}
+		if path != manifestDir && shouldSkipEmbeddedDirectoryEntry(entry.Name()) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relativePath, err := filepath.Rel(pluginDir, path)
+		if err != nil {
+			return err
+		}
+		paths = append(paths, filepath.ToSlash(relativePath))
+		return nil
+	}); err != nil {
+		t.Fatalf("failed to collect dynamic demo manifest resources: %v", err)
+	}
+	sort.Strings(paths)
+	return paths
+}
+
 // mustCollectSourceSQLAssets loads direct SQL files from a plugin source
 // directory and preserves the artifact ordering contract.
 func mustCollectSourceSQLAssets(t *testing.T, pluginDir string, relativeDir string) []*sqlAsset {
@@ -482,6 +561,37 @@ func assertFrontendAssetsMatchSource(t *testing.T, expected []*frontendAsset, ac
 			t.Fatalf("unexpected frontend asset content for %s", asset.Path)
 		}
 	}
+}
+
+// assertManifestResourcesMatchSource compares artifact manifest resource paths
+// against the plugin source tree and locks the two demo manifest.get paths used
+// by the runtime E2E.
+func assertManifestResourcesMatchSource(t *testing.T, expected []string, actual []string) {
+	t.Helper()
+
+	if strings.Join(actual, ",") != strings.Join(expected, ",") {
+		t.Fatalf("expected manifest resources %#v, got %#v", expected, actual)
+	}
+
+	required := []string{
+		"manifest/config/config.yaml",
+		"manifest/config/profile.yaml",
+	}
+	for _, path := range required {
+		if !testStringSliceContains(actual, path) {
+			t.Fatalf("expected manifest resource %s to be packaged, got %#v", path, actual)
+		}
+	}
+}
+
+// testStringSliceContains reports whether items contains target.
+func testStringSliceContains(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
 
 // assertSQLAssetsMatchSource compares ordered SQL artifact entries against the

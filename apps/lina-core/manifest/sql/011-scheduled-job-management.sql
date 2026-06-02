@@ -287,13 +287,13 @@ ON CONFLICT DO NOTHING;
 -- 菜单与按钮权限
 -- ============================================================
 INSERT INTO sys_menu ("parent_id", "menu_key", "name", "path", "component", "perms", "icon", "type", "sort", "visible", "status", "is_frame", "is_cache", "created_at", "updated_at")
-VALUES ((SELECT parent."id" FROM (SELECT "id" FROM sys_menu WHERE "menu_key" = 'scheduler') AS parent), 'system:job:list', '任务管理', '/system/job', 'system/job/index', 'system:job:list', 'lucide:clock-3', 'M', 1, 1, 1, 0, 0, NOW(), NOW())
+VALUES ((SELECT parent."id" FROM (SELECT "id" FROM sys_menu WHERE "menu_key" = 'scheduler') AS parent), 'system:job:list', '任务管理', '/system/job', 'system/job/index', 'system:job:list', 'lucide:clock-3', 'M', 1, 1, 1, 0, 1, NOW(), NOW())
 ON CONFLICT DO NOTHING;
 INSERT INTO sys_menu ("parent_id", "menu_key", "name", "path", "component", "perms", "icon", "type", "sort", "visible", "status", "is_frame", "is_cache", "created_at", "updated_at")
-VALUES ((SELECT parent."id" FROM (SELECT "id" FROM sys_menu WHERE "menu_key" = 'scheduler') AS parent), 'system:jobgroup:list', '分组管理', '/system/job-group', 'system/job-group/index', 'system:jobgroup:list', 'lucide:blocks', 'M', 2, 1, 1, 0, 0, NOW(), NOW())
+VALUES ((SELECT parent."id" FROM (SELECT "id" FROM sys_menu WHERE "menu_key" = 'scheduler') AS parent), 'system:jobgroup:list', '分组管理', '/system/job-group', 'system/job-group/index', 'system:jobgroup:list', 'lucide:blocks', 'M', 2, 1, 1, 0, 1, NOW(), NOW())
 ON CONFLICT DO NOTHING;
 INSERT INTO sys_menu ("parent_id", "menu_key", "name", "path", "component", "perms", "icon", "type", "sort", "visible", "status", "is_frame", "is_cache", "created_at", "updated_at")
-VALUES ((SELECT parent."id" FROM (SELECT "id" FROM sys_menu WHERE "menu_key" = 'scheduler') AS parent), 'system:joblog:list', '执行日志', '/system/job-log', 'system/job-log/index', 'system:joblog:list', 'lucide:scroll-text', 'M', 3, 1, 1, 0, 0, NOW(), NOW())
+VALUES ((SELECT parent."id" FROM (SELECT "id" FROM sys_menu WHERE "menu_key" = 'scheduler') AS parent), 'system:joblog:list', '执行日志', '/system/job-log', 'system/job-log/index', 'system:joblog:list', 'lucide:scroll-text', 'M', 3, 1, 1, 0, 1, NOW(), NOW())
 ON CONFLICT DO NOTHING;
 
 INSERT INTO sys_menu ("parent_id", "menu_key", "name", "path", "component", "perms", "icon", "type", "sort", "visible", "status", "is_frame", "is_cache", "created_at", "updated_at")

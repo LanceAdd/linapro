@@ -13,7 +13,9 @@ go run . wasm p=linapro-demo-dynamic
 go run . wasm plugin_dir=/path/to/plugin out=temp/output
 go run . plugins.status
 go run . i18n.check
-go run . init confirm=init
+go run . db.init confirm=init
+go run . db.upgrade confirm=upgrade
+go run . db.mock confirm=mock
 go run . tidy
 go run . build platforms=linux/amd64,linux/arm64
 go run . image tag=v0.2.0 push=0
@@ -32,7 +34,9 @@ make.cmd status
 make.cmd pack.assets
 make.cmd plugins.status
 make.cmd i18n.check
-make.cmd init confirm=init
+make.cmd db.init confirm=init
+make.cmd db.upgrade confirm=upgrade
+make.cmd db.mock confirm=mock
 make.cmd tidy
 make.cmd version to=v0.2.0
 make.cmd release.tag.check tag=v0.2.0
@@ -55,8 +59,8 @@ make.cmd release.tag.check tag=v0.2.0
 
 | 参数 | 示例 | 用途 |
 |------|------|------|
-| `confirm` | `confirm=init` | 确认高风险初始化命令。 |
-| `rebuild` | `rebuild=true` | 在`init`时重建配置中的数据库。 |
+| `confirm` | `confirm=upgrade` | 确认高风险数据库维护命令。 |
+| `rebuild` | `rebuild=true` | 在`db.init`时重建配置中的数据库。 |
 | `platforms` | `platforms=linux/amd64,linux/arm64` | 指定构建目标平台。 |
 | `plugins` | `plugins=0` | 覆盖构建、开发、镜像和 Go 测试命令的自动插件完整模式探测。 |
 | `to` | `to=v0.2.0` | 指定`version`写入的框架版本号。 |
@@ -90,9 +94,11 @@ make wasm p=linapro-demo-dynamic
 ```bash
 go run . ctrl
 go run . dao
+go run . ctrl p=linapro-content-notice
+go run . dao dir=apps/lina-plugins/linapro-content-notice/backend
 ```
 
-生成流程仍使用`apps/lina-core`的`GoFrame`项目布局，并读取`apps/lina-core/hack/config.yaml`。`dao`生成仍要求配置的数据库可连接且已初始化，因此执行前需要先运行仓库初始化流程或准备等价数据库。
+未传入目标参数时，生成流程使用`apps/lina-core`的`GoFrame`项目布局，并读取`apps/lina-core/hack/config.yaml`。使用`p=<plugin-id>`或`dir=<backend-dir>`可以定向插件后端，并读取该插件的`backend/hack/config.yaml`。`dao`生成仍要求配置的数据库可连接且已初始化，因此执行前需要先运行仓库初始化流程或准备等价数据库。
 
 ## 运行时 I18n 检查
 

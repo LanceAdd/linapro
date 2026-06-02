@@ -13,7 +13,9 @@ go run . wasm p=linapro-demo-dynamic
 go run . wasm plugin_dir=/path/to/plugin out=temp/output
 go run . plugins.status
 go run . i18n.check
-go run . init confirm=init
+go run . db.init confirm=init
+go run . db.upgrade confirm=upgrade
+go run . db.mock confirm=mock
 go run . tidy
 go run . build platforms=linux/amd64,linux/arm64
 go run . image tag=v0.2.0 push=0
@@ -32,7 +34,9 @@ make.cmd status
 make.cmd pack.assets
 make.cmd plugins.status
 make.cmd i18n.check
-make.cmd init confirm=init
+make.cmd db.init confirm=init
+make.cmd db.upgrade confirm=upgrade
+make.cmd db.mock confirm=mock
 make.cmd tidy
 make.cmd version to=v0.2.0
 make.cmd release.tag.check tag=v0.2.0
@@ -55,8 +59,8 @@ In PowerShell, run it with an explicit current-directory prefix:
 
 | Parameter | Example | Purpose |
 | --- | --- | --- |
-| `confirm` | `confirm=init` | Confirms destructive bootstrap commands. |
-| `rebuild` | `rebuild=true` | Rebuilds the configured database during `init`. |
+| `confirm` | `confirm=upgrade` | Confirms sensitive database maintenance commands. |
+| `rebuild` | `rebuild=true` | Rebuilds the configured database during `db.init`. |
 | `platforms` | `platforms=linux/amd64,linux/arm64` | Selects build target platforms. |
 | `plugins` | `plugins=0` | Overrides automatic plugin-full detection for build, dev, image, and Go test commands. |
 | `to` | `to=v0.2.0` | Selects the framework version written by `version`. |
@@ -90,9 +94,11 @@ Use `plugin_dir=<path>` when a test or local fixture needs to package a dynamic 
 ```bash
 go run . ctrl
 go run . dao
+go run . ctrl p=linapro-content-notice
+go run . dao dir=apps/lina-plugins/linapro-content-notice/backend
 ```
 
-The generated code still uses the `apps/lina-core` GoFrame project layout and reads `apps/lina-core/hack/config.yaml`. `dao` generation still requires the configured database to be reachable and initialized, so run the repository initialization flow or provide an equivalent database before using it.
+Without a target parameter, generated code uses the `apps/lina-core` GoFrame project layout and reads `apps/lina-core/hack/config.yaml`. Use `p=<plugin-id>` or `dir=<backend-dir>` to target a plugin backend and read that plugin's `backend/hack/config.yaml`. `dao` generation still requires the configured database to be reachable and initialized, so run the repository initialization flow or provide an equivalent database before using it.
 
 ## Runtime I18n Checks
 

@@ -1,3 +1,5 @@
+// This file verifies dynamic WASM builder resource packaging contracts.
+
 package wasmbuilder
 
 import (
@@ -172,8 +174,8 @@ func TestBuildRuntimeWasmArtifactFromSourceEmbedsDeclaredAssets(t *testing.T) {
 		metadata.I18NAssetCount != 1 ||
 		metadata.APIDocI18NAssetCount != 1 ||
 		metadata.SQLAssetCount != 2 ||
-		metadata.ManifestResourceCount != 4 {
-		t.Fatalf("expected dynamic metadata counts 1/1/1/2/4, got %#v", metadata)
+		metadata.ManifestResourceCount != 8 {
+		t.Fatalf("expected dynamic metadata counts 1/1/1/2/8, got %#v", metadata)
 	}
 
 	var frontend []*frontendAsset
@@ -207,16 +209,15 @@ func TestBuildRuntimeWasmArtifactFromSourceEmbedsDeclaredAssets(t *testing.T) {
 	expectedManifestPaths := []string{
 		"manifest/config/config.example.yaml",
 		"manifest/config/config.yaml",
+		"manifest/i18n/en-US/plugin.json",
+		"manifest/i18n/zh-CN/apidoc/plugin-api-main.json",
 		"manifest/metadata.yaml",
 		"manifest/resources/policy.yaml",
+		"manifest/sql/001-plugin-dev-dynamic-builder.sql",
+		"manifest/sql/uninstall/001-plugin-dev-dynamic-builder.sql",
 	}
 	if got := manifestResourcePaths(manifestResources); strings.Join(got, ",") != strings.Join(expectedManifestPaths, ",") {
 		t.Fatalf("expected manifest resource paths %#v, got %#v", expectedManifestPaths, got)
-	}
-	for _, resource := range manifestResources {
-		if strings.HasPrefix(resource.Path, "manifest/sql/") || strings.HasPrefix(resource.Path, "manifest/i18n/") {
-			t.Fatalf("expected dedicated sql/i18n resources to be excluded, got %#v", manifestResources)
-		}
 	}
 
 	var hooks []*hookSpec
@@ -314,8 +315,11 @@ func TestCollectManifestResourcesScansDirectoryFallback(t *testing.T) {
 	expectedPaths := []string{
 		"manifest/config/config.example.yaml",
 		"manifest/config/config.yaml",
+		"manifest/i18n/zh-CN/plugin.json",
 		"manifest/metadata.yaml",
+		"manifest/resources/ignored.json",
 		"manifest/resources/policy.yaml",
+		"manifest/sql/001-demo.sql",
 	}
 	if got := manifestResourcePaths(resources); strings.Join(got, ",") != strings.Join(expectedPaths, ",") {
 		t.Fatalf("expected manifest resources %#v, got %#v", expectedPaths, got)
